@@ -1,19 +1,19 @@
 package com.example.model
 
-enum class ObdConnectionType {
-    BLUETOOTH_CLASSIC,
-    BLUETOOTH_BLE,
-    WIFI
+enum class ObdConnectionType(val label: String) {
+    BLUETOOTH_CLASSIC("Bluetooth SPP"),
+    BLUETOOTH_BLE("Bluetooth Low Energy"),
+    WIFI("TCP/IP Socket")
 }
 
-enum class ObdConnectionStatus {
-    DISCONNECTED,
-    SCANNING,
-    CONNECTING,
-    INITIALIZING_ELM,
-    BUS_INIT_CAN,
-    CONNECTED,
-    ERROR
+enum class ObdConnectionStatus(val label: String) {
+    DISCONNECTED("Disconnected"),
+    SCANNING("Scanning Devices..."),
+    CONNECTING("Connecting..."),
+    INITIALIZING_ELM("Handshake ELM327..."),
+    BUS_INIT_CAN("Negotiating CAN..."),
+    CONNECTED("Connected"),
+    ERROR("Connection Failed")
 }
 
 data class ObdAdapterDevice(
@@ -21,7 +21,6 @@ data class ObdAdapterDevice(
     val name: String,
     val address: String, // MAC address or IP:Port
     val type: ObdConnectionType,
-    val signalDbm: Int = -50,
     val isPaired: Boolean = false,
     val protocol: String = "ISO 15765-4 CAN",
     val latencyMs: Int = 15,

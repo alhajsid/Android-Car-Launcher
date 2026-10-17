@@ -57,10 +57,11 @@ import java.util.Locale
 fun HudMirrorScreen(
     telemetry: TelemetryData,
     speedUnit: SpeedUnit,
+    isMirrored: Boolean,
+    onToggleMirror: (Boolean) -> Unit,
     onExit: () -> Unit,
     modifier: Modifier = Modifier
 ) {
-    var isMirrored by remember { mutableStateOf(true) }
     var clockString by remember { mutableStateOf("17:07") }
 
     LaunchedEffect(Unit) {
@@ -99,7 +100,7 @@ fun HudMirrorScreen(
                     .clip(RoundedCornerShape(12.dp))
                     .background(Color(0x33FFFFFF))
                     .border(1.dp, Color(0x33FFFFFF), RoundedCornerShape(12.dp))
-                    .clickable { isMirrored = !isMirrored }
+                    .clickable { onToggleMirror(!isMirrored) }
                     .padding(horizontal = 14.dp, vertical = 8.dp),
                 verticalAlignment = Alignment.CenterVertically
             ) {

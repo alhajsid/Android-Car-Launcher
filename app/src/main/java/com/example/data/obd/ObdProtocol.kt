@@ -25,6 +25,9 @@ object ObdProtocol {
     const val CMD_MAF = "0110"
     const val CMD_MAP_BOOST = "010B"
     const val CMD_FUEL_LEVEL = "012F"
+    const val CMD_MIL_STATUS = "0101"
+    const val CMD_READ_DTC = "03"
+    const val CMD_CLEAR_DTC = "04"
     const val CMD_VOLTAGE = "ATRV"
     const val CMD_PROTOCOL = "ATDP"
 
@@ -195,4 +198,71 @@ object ObdProtocol {
         val volt = match?.groupValues?.get(1)?.toFloatOrNull()
         return if (volt != null && volt in 5f..32f) volt else null
     }
+
+    /**
+     * Parses PID 0101: Returns Pair(isMilActive: Boolean, dtcCount: Int)
+     */
+    fun parseMilStatus(response: String): Pair<Boolean, Int>? {
+        val clean = cleanResponse(response)
+        val payload = extractPayload(clean, CMD_MIL_STATUS) ?: return null
+        if (payload.length >= 2) {
+            val a = payload.substring(0, 2).toIntOrNull(16) ?: return null
+            val isMilOn = (a and 0x80) != 0
+            val count = a and 0x7F
+            return Pair(isMilOn, count)
+        }
+        return null
+    }
+
+    /**
+     * Parses Mode 03 diagnostic trouble codes response: e.g. "43 01 33 00 00 00 00" -> ["P0133"]
+     */
+    fun parseDtcCodes(response: String): List<String> {
+        val clean = cleanResponse(response)
+        val dtcList = mutableListOf<String>()
+        val index = clean.indexOf("43")
+        if (index == -1) return emptyList()
+
+        val payload = clean.substring(index + 2).takeWhile { it in '0'..'9' || it in 'A'..'F' }
+        var i = 0
+        while (i + 4 <= payload.length) {
+            val hex = payload.substring(i, i + 4)
+            i += 4
+            if (hex == "0000") continue
+
+            val b1 = hex.substring(0, 2).toIntOrNull(16) ?: continue
+            val b2 = hex.substring(2, 4).toIntOrNull(16) ?: continue
+
+            val prefix = when ((b1 and 0xC0) shr 6) {
+                0 -> "P"
+                1 -> "C"
+                2 -> "B"
+                3 -> "U"
+                else -> "P"
+            }
+            val digit2 = (b1 and 0x30) shr 4
+            val digit3 = (b1 and 0x0F).toString(16).uppercase(Locale.US)
+            val digit4_5 = String.format(Locale.US, "%02X", b2)
+
+            val code = "$prefix$digit2$digit3$digit4_5"
+            if (!dtcList.contains(code)) {
+                dtcList.add(code)
+            }
+        }
+        return dtcList
+    }
 }
+
+data class ParsedObdMetrics(
+    val speedKmh: Int? = null,
+    val rpm: Int? = null,
+    val coolantTempC: Int? = null,
+    val engineLoadPercent: Int? = null,
+    val throttlePercent: Int? = null,
+    val intakeTempC: Int? = null,
+    val mafGs: Float? = null,
+    val turboBoostBar: Float? = null,
+    val fuelLevelPercent: Int? = null,
+    val voltage: Float? = null,
+    val protocolName: String? = null
+)

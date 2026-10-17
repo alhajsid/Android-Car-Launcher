@@ -23,6 +23,7 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ArrowBack
 import androidx.compose.material.icons.filled.BrightnessMedium
+import androidx.compose.material.icons.filled.Build
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.ColorLens
@@ -43,6 +44,7 @@ import androidx.compose.material3.Switch
 import androidx.compose.material3.SwitchDefaults
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -54,6 +56,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.model.DisplayBrightnessMode
 import com.example.model.SpeedUnit
+import com.example.model.TelemetryData
 import com.example.model.TempUnit
 import com.example.model.UserSettings
 import com.example.ui.theme.BmwAmber
@@ -64,16 +67,19 @@ import com.example.ui.theme.CockpitSurfaceLowest
 import com.example.ui.theme.GlassCardBorder
 import com.example.ui.theme.GlassCardFill
 import com.example.ui.theme.TextDark
-import com.example.ui.theme.TextMuted
 import com.example.ui.theme.TextPrimaryWhite
 import com.example.ui.theme.TextSecondaryGrey
 import com.example.ui.theme.ThemeAccent
+import kotlinx.coroutines.launch
+import java.util.Locale
 
 @Composable
 fun SettingsScreen(
     settings: UserSettings,
+    telemetry: TelemetryData,
     isDefaultLauncher: Boolean,
     onUpdateSettings: ((UserSettings) -> UserSettings) -> Unit,
+    onCalibrateGear: (Int) -> Unit,
     onOpenHudMirror: () -> Unit,
     onRequestDefaultLauncher: () -> Unit,
     onOpenHomeSettings: () -> Unit,
@@ -81,6 +87,7 @@ fun SettingsScreen(
     modifier: Modifier = Modifier
 ) {
     val accentColor = settings.themeAccent.primary
+    val scope = rememberCoroutineScope()
 
     Box(
         modifier = modifier
@@ -126,7 +133,7 @@ fun SettingsScreen(
                 }
 
                 Text(
-                    text = "COCKPIT SYSTEM SETTINGS",
+                    text = "COCKPIT SETTINGS",
                     fontFamily = FontFamily.SansSerif,
                     fontWeight = FontWeight.Bold,
                     fontSize = 13.sp,
@@ -162,7 +169,7 @@ fun SettingsScreen(
                 verticalArrangement = Arrangement.spacedBy(14.dp)
             ) {
                 // Section 1: Units & Driving Metrics
-                SettingsSection(title = "UNITS & DRIVING METRICS", icon = Icons.Default.Speed) {
+                SettingsSection(title = "UNITS & FORMAT", icon = Icons.Default.Speed) {
                     // Speed Unit Toggle
                     Row(
                         modifier = Modifier.fillMaxWidth(),
@@ -171,7 +178,7 @@ fun SettingsScreen(
                     ) {
                         Column {
                             Text("Speedometer Units", fontWeight = FontWeight.Bold, fontSize = 13.sp, color = TextPrimaryWhite)
-                            Text("Standard metric or imperial velocity", fontSize = 10.sp, color = TextSecondaryGrey)
+                            Text("Standard metric (km/h) or imperial (mph)", fontSize = 10.sp, color = TextSecondaryGrey)
                         }
                         Row(
                             modifier = Modifier
@@ -207,8 +214,8 @@ fun SettingsScreen(
                         verticalAlignment = Alignment.CenterVertically
                     ) {
                         Column {
-                            Text("Coolant & Ambient Temperature", fontWeight = FontWeight.Bold, fontSize = 13.sp, color = TextPrimaryWhite)
-                            Text("Celsius or Fahrenheit scales", fontSize = 10.sp, color = TextSecondaryGrey)
+                            Text("Temperature Units", fontWeight = FontWeight.Bold, fontSize = 13.sp, color = TextPrimaryWhite)
+                            Text("Coolant & ambient Celsius or Fahrenheit", fontSize = 10.sp, color = TextSecondaryGrey)
                         }
                         Row(
                             modifier = Modifier
@@ -236,10 +243,31 @@ fun SettingsScreen(
                             }
                         }
                     }
+
+                    // 24-Hour Digital Clock Toggle
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Column {
+                            Text("24-Hour Digital Clock", fontWeight = FontWeight.Bold, fontSize = 13.sp, color = TextPrimaryWhite)
+                            Text("Toggle between 24h (18:42) and 12h (6:42 PM)", fontSize = 10.sp, color = TextSecondaryGrey)
+                        }
+                        Switch(
+                            checked = settings.is24HourClock,
+                            onCheckedChange = { onUpdateSettings { s -> s.copy(is24HourClock = it) } },
+                            colors = SwitchDefaults.colors(
+                                checkedThumbColor = Color.White,
+                                checkedTrackColor = accentColor
+                            )
+                        )
+                    }
                 }
 
                 // Section 2: Powertrain & Redline Safety Settings
-                SettingsSection(title = "POWERTRAIN & REDLINE WARNING", icon = Icons.Default.NotificationsActive) {
+                SettingsSection(title = "POWERTRAIN SAFETY & ALERTS", icon = Icons.Default.NotificationsActive) {
+                    // Redline Slider
                     Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
                         Row(
                             modifier = Modifier.fillMaxWidth(),
@@ -251,11 +279,60 @@ fun SettingsScreen(
                         Slider(
                             value = settings.redlineRpm.toFloat(),
                             onValueChange = { onUpdateSettings { s -> s.copy(redlineRpm = it.toInt()) } },
-                            valueRange = 6000f..8500f,
-                            steps = 4,
+                            valueRange = 5500f..8500f,
+                            steps = 11,
                             colors = SliderDefaults.colors(
                                 thumbColor = BmwCrimson,
                                 activeTrackColor = BmwCrimson,
+                                inactiveTrackColor = Color(0x33FFFFFF)
+                            )
+                        )
+                    }
+
+                    // Coolant Alert Threshold Slider
+                    Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween
+                        ) {
+                            Text("Coolant Overheat Alert Threshold", fontWeight = FontWeight.Bold, fontSize = 13.sp, color = TextPrimaryWhite)
+                            Text("${settings.coolantAlertThreshold}°C", fontWeight = FontWeight.Bold, fontSize = 13.sp, color = BmwAmber)
+                        }
+                        Slider(
+                            value = settings.coolantAlertThreshold.toFloat(),
+                            onValueChange = { onUpdateSettings { s -> s.copy(coolantAlertThreshold = it.toInt()) } },
+                            valueRange = 95f..120f,
+                            steps = 24,
+                            colors = SliderDefaults.colors(
+                                thumbColor = BmwAmber,
+                                activeTrackColor = BmwAmber,
+                                inactiveTrackColor = Color(0x33FFFFFF)
+                            )
+                        )
+                    }
+
+                    // Speed Limit Alert Threshold
+                    Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween
+                        ) {
+                            Text("Overspeed Alert Threshold", fontWeight = FontWeight.Bold, fontSize = 13.sp, color = TextPrimaryWhite)
+                            Text(
+                                text = if (settings.speedLimitAlertKmh > 0) "${settings.speedLimitAlertKmh} km/h" else "DISABLED",
+                                fontWeight = FontWeight.Bold,
+                                fontSize = 13.sp,
+                                color = if (settings.speedLimitAlertKmh > 0) BmwCrimson else TextSecondaryGrey
+                            )
+                        }
+                        Slider(
+                            value = settings.speedLimitAlertKmh.toFloat(),
+                            onValueChange = { onUpdateSettings { s -> s.copy(speedLimitAlertKmh = it.toInt()) } },
+                            valueRange = 0f..200f,
+                            steps = 19,
+                            colors = SliderDefaults.colors(
+                                thumbColor = if (settings.speedLimitAlertKmh > 0) BmwCrimson else TextSecondaryGrey,
+                                activeTrackColor = if (settings.speedLimitAlertKmh > 0) BmwCrimson else Color(0x33FFFFFF),
                                 inactiveTrackColor = Color(0x33FFFFFF)
                             )
                         )
@@ -268,8 +345,8 @@ fun SettingsScreen(
                         verticalAlignment = Alignment.CenterVertically
                     ) {
                         Column {
-                            Text("Simulate Coolant Overheat Alert", fontWeight = FontWeight.Bold, fontSize = 13.sp, color = TextPrimaryWhite)
-                            Text("Tests HUD pulsing red glow & emergency banner", fontSize = 10.sp, color = TextSecondaryGrey)
+                            Text("Test Emergency Overheat Glow", fontWeight = FontWeight.Bold, fontSize = 13.sp, color = TextPrimaryWhite)
+                            Text("Simulates vehicle coolant warning beacon", fontSize = 10.sp, color = TextSecondaryGrey)
                         }
                         Switch(
                             checked = settings.testOverheatAlert,
@@ -282,7 +359,146 @@ fun SettingsScreen(
                     }
                 }
 
-                // Section 3: Theme Accent Options (BMW Neue Klasse & M-Power)
+                // Section 3: Gear Ratio Calibration Screen (Live Learn & Tuning)
+                SettingsSection(title = "GEAR RATIO ESTIMATION & CALIBRATION", icon = Icons.Default.Build) {
+                    Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                        Text(
+                            text = "OBD-II has no standard gear sensor. Vision HUD estimates gear from RPM ÷ Speed. Calibrate your car's transmission ratios below for precise gear recognition.",
+                            fontSize = 10.sp,
+                            color = TextSecondaryGrey,
+                            lineHeight = 14.sp
+                        )
+
+                        // Live current driving ratio indicator
+                        val currentSpeed = telemetry.speed
+                        val currentRpm = telemetry.rpm
+                        val liveRatio = if (currentSpeed > 5 && currentRpm > 600) {
+                            String.format(Locale.US, "%.1f", currentRpm.toFloat() / currentSpeed)
+                        } else {
+                            "--"
+                        }
+
+                        Box(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clip(RoundedCornerShape(10.dp))
+                                .background(Color(0x33FFFFFF))
+                                .padding(10.dp)
+                        ) {
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Column {
+                                    Text("LIVE TELEMETRY RATIO", fontSize = 9.sp, fontWeight = FontWeight.Bold, color = TextSecondaryGrey)
+                                    Text("Current RPM / Speed: $liveRatio", fontSize = 12.sp, fontWeight = FontWeight.Bold, color = accentColor)
+                                }
+                                Text("Gear: ${telemetry.currentGear} (EST)", fontSize = 12.sp, fontWeight = FontWeight.Bold, color = TextPrimaryWhite)
+                            }
+                        }
+
+                        // Table of Gears 1 through 6
+                        (1..6).forEach { gear ->
+                            val ratio = settings.gearRatios[gear] ?: 0f
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .clip(RoundedCornerShape(8.dp))
+                                    .background(Color(0x2205070A))
+                                    .padding(horizontal = 10.dp, vertical = 6.dp),
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Row(verticalAlignment = Alignment.CenterVertically) {
+                                    Box(
+                                        modifier = Modifier
+                                            .size(24.dp)
+                                            .clip(CircleShape)
+                                            .background(accentColor.copy(alpha = 0.3f)),
+                                        contentAlignment = Alignment.Center
+                                    ) {
+                                        Text("G$gear", fontWeight = FontWeight.Black, fontSize = 11.sp, color = accentColor)
+                                    }
+                                    Spacer(modifier = Modifier.width(10.dp))
+                                    Text(
+                                        text = "Ratio: ${String.format(Locale.US, "%.1f", ratio)}",
+                                        fontWeight = FontWeight.Bold,
+                                        fontSize = 12.sp,
+                                        color = TextPrimaryWhite
+                                    )
+                                }
+
+                                // Button to learn current live ratio for this gear
+                                Button(
+                                    onClick = { onCalibrateGear(gear) },
+                                    colors = ButtonDefaults.buttonColors(containerColor = Color(0x334CC2FF)),
+                                    shape = RoundedCornerShape(8.dp)
+                                ) {
+                                    Text("LEARN LIVE RATIO", fontSize = 9.sp, fontWeight = FontWeight.Bold, color = BmwCyan)
+                                }
+                            }
+                        }
+                    }
+                }
+
+                // Section 4: Display Brightness & HUD Mirroring
+                SettingsSection(title = "DISPLAY BRIGHTNESS & HUD PROJECTION", icon = Icons.Default.BrightnessMedium) {
+                    Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                        Text("Screen Brightness Control", fontWeight = FontWeight.Bold, fontSize = 13.sp, color = TextPrimaryWhite)
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clip(RoundedCornerShape(10.dp))
+                                .background(Color(0x8005070A))
+                                .padding(4.dp),
+                            horizontalArrangement = Arrangement.spacedBy(6.dp)
+                        ) {
+                            DisplayBrightnessMode.values().forEach { mode ->
+                                val isSel = (settings.brightnessMode == mode)
+                                Box(
+                                    modifier = Modifier
+                                        .weight(1f)
+                                        .clip(RoundedCornerShape(8.dp))
+                                        .background(if (isSel) accentColor else Color.Transparent)
+                                        .clickable { onUpdateSettings { it.copy(brightnessMode = mode) } }
+                                        .padding(vertical = 8.dp),
+                                    contentAlignment = Alignment.Center
+                                ) {
+                                    Text(
+                                        text = mode.label,
+                                        fontWeight = FontWeight.Bold,
+                                        fontSize = 10.sp,
+                                        color = if (isSel) TextDark else TextSecondaryGrey,
+                                        maxLines = 1
+                                    )
+                                }
+                            }
+                        }
+
+                        // HUD Windshield Mirror Projection Toggle
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Column {
+                                Text("HUD Mirrored Windshield Projection", fontWeight = FontWeight.Bold, fontSize = 13.sp, color = TextPrimaryWhite)
+                                Text("Flips HUD text and dials horizontally for glass reflection", fontSize = 10.sp, color = TextSecondaryGrey)
+                            }
+                            Switch(
+                                checked = settings.isHudMirrored,
+                                onCheckedChange = { onUpdateSettings { s -> s.copy(isHudMirrored = it) } },
+                                colors = SwitchDefaults.colors(
+                                    checkedThumbColor = Color.White,
+                                    checkedTrackColor = accentColor
+                                )
+                            )
+                        }
+                    }
+                }
+
+                // Section 5: Theme Accent Options (BMW Neue Klasse & M-Power)
                 SettingsSection(title = "NEUE KLASSE COCKPIT THEME", icon = Icons.Default.ColorLens) {
                     Row(
                         modifier = Modifier.fillMaxWidth(),
@@ -335,49 +551,9 @@ fun SettingsScreen(
                     }
                 }
 
-                // Section 4: Display & Time Format
-                SettingsSection(title = "DISPLAY & TIME", icon = Icons.Default.Schedule) {
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.SpaceBetween,
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Column {
-                            Text("24-Hour Digital Clock", fontWeight = FontWeight.Bold, fontSize = 13.sp, color = TextPrimaryWhite)
-                            Text("Toggle between 24h (18:42) and 12h (6:42 PM)", fontSize = 10.sp, color = TextSecondaryGrey)
-                        }
-                        Switch(
-                            checked = settings.is24HourClock,
-                            onCheckedChange = { onUpdateSettings { s -> s.copy(is24HourClock = it) } },
-                            colors = SwitchDefaults.colors(
-                                checkedThumbColor = Color.White,
-                                checkedTrackColor = accentColor
-                            )
-                        )
-                    }
-
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.SpaceBetween,
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Column {
-                            Text("Default Smartphone Projection", fontWeight = FontWeight.Bold, fontSize = 13.sp, color = TextPrimaryWhite)
-                            Text("Quick link dock preset", fontSize = 10.sp, color = TextSecondaryGrey)
-                        }
-                        Text(
-                            text = settings.defaultCarLauncher,
-                            fontWeight = FontWeight.Bold,
-                            fontSize = 12.sp,
-                            color = BmwCyan
-                        )
-                    }
-                }
-
-                // Section 5: Android System & Default Launcher
+                // Section 6: Android System & Default Launcher
                 SettingsSection(title = "ANDROID HOME LAUNCHER (ROLEMANAGER)", icon = Icons.Default.Home) {
                     Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                        // Live RoleManager Status Card
                         val statusBorderColor = if (isDefaultLauncher) BmwOptimalGreen else BmwAmber
                         val statusBgColor = if (isDefaultLauncher) BmwOptimalGreen.copy(alpha = 0.15f) else BmwAmber.copy(alpha = 0.15f)
 

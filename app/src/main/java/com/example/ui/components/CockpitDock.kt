@@ -6,22 +6,20 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Android
 import androidx.compose.material.icons.filled.Flip
 import androidx.compose.material.icons.filled.GridView
 import androidx.compose.material.icons.filled.MusicNote
 import androidx.compose.material.icons.filled.Navigation
-import androidx.compose.material.icons.filled.PhoneIphone
+import androidx.compose.material.icons.filled.Phone
+import androidx.compose.material.icons.filled.Sensors
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material3.Icon
-import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -59,25 +57,25 @@ fun CockpitDock(
             onClick = { onNavigate("maps") }
         )
 
-        // Music Shortcut
+        // Music / Media Shortcut
         DockIconButton(
             icon = Icons.Default.MusicNote,
             contentDescription = "Music",
             onClick = { onNavigate("music") }
         )
 
-        // Android Auto Shortcut
+        // Phone / Handsfree Calling Shortcut
         DockIconButton(
-            icon = Icons.Default.Android,
-            contentDescription = "Android Auto",
-            onClick = { onNavigate("android_auto") }
+            icon = Icons.Default.Phone,
+            contentDescription = "Phone",
+            onClick = { onNavigate("phone") }
         )
 
-        // Apple CarPlay Shortcut
+        // OBD-II Live Telemetry & DTC Diagnostics Shortcut
         DockIconButton(
-            icon = Icons.Default.PhoneIphone,
-            contentDescription = "CarPlay",
-            onClick = { onNavigate("carplay") }
+            icon = Icons.Default.Sensors,
+            contentDescription = "OBD Diagnostics",
+            onClick = { onNavigate("obd_diagnostics") }
         )
 
         // Divider
@@ -88,7 +86,7 @@ fun CockpitDock(
                 .background(Color(0x22FFFFFF))
         )
 
-        // HUD Mirror Mode Quick Toggle
+        // HUD Mirror Mode Quick Toggle (windshield projection)
         DockIconButton(
             icon = Icons.Default.Flip,
             contentDescription = "HUD Mirror Mode",

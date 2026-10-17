@@ -1,5 +1,8 @@
 package com.example.ui.components
 
+import android.content.Context
+import android.content.Intent
+import android.provider.Settings
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -16,10 +19,13 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Cloud
 import androidx.compose.material.icons.filled.LocalGasStation
 import androidx.compose.material.icons.filled.MusicNote
+import androidx.compose.material.icons.filled.OpenInNew
 import androidx.compose.material.icons.filled.Pause
 import androidx.compose.material.icons.filled.PlayArrow
+import androidx.compose.material.icons.filled.Route
 import androidx.compose.material.icons.filled.SkipNext
 import androidx.compose.material.icons.filled.SkipPrevious
 import androidx.compose.material.icons.filled.WbSunny
@@ -37,6 +43,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
@@ -62,8 +69,11 @@ fun FuelAndMediaCard(
     is24Hour: Boolean,
     accentColor: Color,
     onTogglePlayback: () -> Unit,
+    onSkipNext: () -> Unit = {},
+    onSkipPrevious: () -> Unit = {},
     modifier: Modifier = Modifier
 ) {
+    val context = LocalContext.current
     var currentTimeString by remember { mutableStateOf("") }
     var currentDateString by remember { mutableStateOf("") }
 
@@ -87,7 +97,7 @@ fun FuelAndMediaCard(
             .testTag("fuel_and_media_card"),
         verticalArrangement = Arrangement.spacedBy(10.dp)
     ) {
-        // Top: Clock, Date & Weather Glance
+        // Top: Clock, Date & Real Weather Glance
         Row(
             modifier = Modifier.fillMaxWidth(),
             horizontalArrangement = Arrangement.SpaceBetween,
@@ -104,7 +114,7 @@ fun FuelAndMediaCard(
                     color = TextPrimaryWhite
                 )
                 Text(
-                    text = currentDateString.ifEmpty { "Wed 24 Oct" }.uppercase(),
+                    text = currentDateString.ifEmpty { "COCKPIT" }.uppercase(),
                     fontFamily = FontFamily.SansSerif,
                     fontWeight = FontWeight.SemiBold,
                     fontSize = 10.sp,
@@ -113,30 +123,56 @@ fun FuelAndMediaCard(
                 )
             }
 
+            // Real Weather Glance (or Locating state if no GPS fix)
             Row(
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.spacedBy(4.dp)
             ) {
-                Icon(
-                    imageVector = Icons.Default.WbSunny,
-                    contentDescription = "Weather",
-                    tint = BmwAmber,
-                    modifier = Modifier.size(24.dp)
-                )
-                Text(
-                    text = "${telemetry.weatherTempC}°",
-                    fontFamily = FontFamily.SansSerif,
-                    fontWeight = FontWeight.Bold,
-                    fontSize = 20.sp,
-                    color = TextPrimaryWhite
-                )
+                if (telemetry.weatherTempC != null) {
+                    Icon(
+                        imageVector = if (telemetry.weatherCondition?.contains("Rain", ignoreCase = true) == true)
+                            Icons.Default.Cloud else Icons.Default.WbSunny,
+                        contentDescription = "Weather",
+                        tint = BmwAmber,
+                        modifier = Modifier.size(24.dp)
+                    )
+                    Column(horizontalAlignment = Alignment.End) {
+                        Text(
+                            text = "${telemetry.weatherTempC}°",
+                            fontFamily = FontFamily.SansSerif,
+                            fontWeight = FontWeight.Bold,
+                            fontSize = 20.sp,
+                            color = TextPrimaryWhite
+                        )
+                        Text(
+                            text = telemetry.weatherCondition ?: "Fair",
+                            fontFamily = FontFamily.SansSerif,
+                            fontWeight = FontWeight.SemiBold,
+                            fontSize = 9.sp,
+                            color = TextSecondaryGrey
+                        )
+                    }
+                } else {
+                    Icon(
+                        imageVector = Icons.Default.Cloud,
+                        contentDescription = "Weather",
+                        tint = TextMuted,
+                        modifier = Modifier.size(20.dp)
+                    )
+                    Text(
+                        text = "--°",
+                        fontFamily = FontFamily.SansSerif,
+                        fontWeight = FontWeight.Bold,
+                        fontSize = 18.sp,
+                        color = TextMuted
+                    )
+                }
             }
         }
 
-        // Middle: Fuel Level & Remaining Range
+        // Middle: Real OBD Fuel & Trip Meter Card
         val hasObd = telemetry.isObdConnected
         val hasFuel = hasObd && telemetry.fuelLevelPercent != null
-        val hasRange = hasObd && telemetry.remainingRangeKm != null
 
         Box(
             modifier = Modifier
@@ -146,7 +182,8 @@ fun FuelAndMediaCard(
                 .border(1.dp, Color(0x1AFFFFFF), RoundedCornerShape(14.dp))
                 .padding(10.dp)
         ) {
-            Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                // Top header: Fuel Level & Trip Distance
                 Row(
                     modifier = Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.SpaceBetween,
@@ -155,72 +192,55 @@ fun FuelAndMediaCard(
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         Icon(
                             imageVector = Icons.Default.LocalGasStation,
-                            contentDescription = "Fuel",
-                            tint = if (hasFuel) BmwAmber else TextMuted,
-                            modifier = Modifier.size(18.dp)
+                            contentDescription = "Fuel Level",
+                            tint = if (hasFuel) accentColor else TextMuted,
+                            modifier = Modifier.size(16.dp)
                         )
-                        Spacer(modifier = Modifier.width(4.dp))
+                        Spacer(modifier = Modifier.width(6.dp))
                         Text(
-                            text = if (hasFuel) "${telemetry.fuelLevelPercent}%" else "--%",
+                            text = "FUEL TANK",
                             fontFamily = FontFamily.SansSerif,
                             fontWeight = FontWeight.Bold,
-                            fontSize = 15.sp,
-                            color = if (hasFuel) TextPrimaryWhite else TextMuted
-                        )
-                        Spacer(modifier = Modifier.width(4.dp))
-                        Text(
-                            text = if (hasFuel) "PETROL" else if (hasObd) "NO SENSOR" else "NO OBD",
-                            fontFamily = FontFamily.SansSerif,
-                            fontWeight = FontWeight.SemiBold,
-                            fontSize = 9.sp,
-                            color = TextMuted
+                            fontSize = 11.sp,
+                            letterSpacing = 0.5.sp,
+                            color = TextPrimaryWhite
                         )
                     }
 
-                    Row(verticalAlignment = Alignment.Bottom) {
-                        Text(
-                            text = if (hasRange) "${telemetry.remainingRangeKm}" else "--",
-                            fontFamily = FontFamily.SansSerif,
-                            fontWeight = FontWeight.Black,
-                            fontSize = 18.sp,
-                            color = if (hasRange) TextPrimaryWhite else TextMuted
-                        )
-                        Spacer(modifier = Modifier.width(3.dp))
-                        Text(
-                            text = "km",
-                            fontFamily = FontFamily.SansSerif,
-                            fontWeight = FontWeight.SemiBold,
-                            fontSize = 11.sp,
-                            color = TextSecondaryGrey,
-                            modifier = Modifier.padding(bottom = 2.dp)
-                        )
-                    }
+                    Text(
+                        text = if (hasFuel) "${telemetry.fuelLevelPercent}%" else "--%",
+                        fontFamily = FontFamily.SansSerif,
+                        fontWeight = FontWeight.Bold,
+                        fontSize = 13.sp,
+                        color = if (hasFuel) TextPrimaryWhite else TextMuted
+                    )
                 }
 
-                // Fuel Level Bar
+                // Fuel Level Progress Bar
+                val progressFraction = if (hasFuel) (telemetry.fuelLevelPercent!! / 100f).coerceIn(0f, 1f) else 0f
                 Box(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .height(5.dp)
-                        .clip(RoundedCornerShape(2.5.dp))
-                        .background(Color(0x22FFFFFF))
+                        .height(6.dp)
+                        .clip(RoundedCornerShape(3.dp))
+                        .background(Color(0x26FFFFFF))
                 ) {
                     if (hasFuel) {
                         Box(
                             modifier = Modifier
-                                .fillMaxWidth((telemetry.fuelLevelPercent!! / 100f).coerceIn(0f, 1f))
-                                .height(5.dp)
-                                .clip(RoundedCornerShape(2.5.dp))
+                                .fillMaxWidth(progressFraction)
+                                .height(6.dp)
+                                .clip(RoundedCornerShape(3.dp))
                                 .background(
                                     Brush.horizontalGradient(
-                                        listOf(BmwAmber, Color(0xFFFF7700), Color(0xFFFFD54F))
+                                        listOf(if (progressFraction < 0.15f) Color(0xFFFF3344) else accentColor, accentColor)
                                     )
                                 )
                         )
                     }
                 }
 
-                // Instant vs Average Fuel Consumption
+                // Trip Stats: Instant Flow, Trip Distance, Elapsed Duration
                 Row(
                     modifier = Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.SpaceBetween
@@ -235,9 +255,9 @@ fun FuelAndMediaCard(
                         )
                         Text(
                             text = if (hasObd && telemetry.instantFuelL100km != null) {
-                                "${String.format(Locale.US, "%.1f", telemetry.instantFuelL100km)} L/100km"
+                                "${String.format(Locale.US, "%.1f", telemetry.instantFuelL100km)} L/100"
                             } else {
-                                "-- L/100km"
+                                "-- L/100"
                             },
                             fontFamily = FontFamily.SansSerif,
                             fontWeight = FontWeight.Bold,
@@ -245,31 +265,47 @@ fun FuelAndMediaCard(
                             color = if (hasObd && telemetry.instantFuelL100km != null) TextPrimaryWhite else TextMuted
                         )
                     }
-                    Column(horizontalAlignment = Alignment.End) {
+
+                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
                         Text(
-                            text = "AVERAGE",
+                            text = "TRIP DISTANCE",
                             fontFamily = FontFamily.SansSerif,
                             fontWeight = FontWeight.SemiBold,
                             fontSize = 8.sp,
                             color = TextMuted
                         )
                         Text(
-                            text = if (hasObd && telemetry.avgFuelL100km != null) {
-                                "${String.format(Locale.US, "%.1f", telemetry.avgFuelL100km)} L/100km"
-                            } else {
-                                "-- L/100km"
-                            },
+                            text = "${telemetry.tripDistanceKm} km",
                             fontFamily = FontFamily.SansSerif,
                             fontWeight = FontWeight.Bold,
                             fontSize = 11.sp,
-                            color = if (hasObd && telemetry.avgFuelL100km != null) TextPrimaryWhite else TextMuted
+                            color = TextPrimaryWhite
+                        )
+                    }
+
+                    Column(horizontalAlignment = Alignment.End) {
+                        Text(
+                            text = "TRIP TIME",
+                            fontFamily = FontFamily.SansSerif,
+                            fontWeight = FontWeight.SemiBold,
+                            fontSize = 8.sp,
+                            color = TextMuted
+                        )
+                        val mins = telemetry.tripDurationSec / 60
+                        val secs = telemetry.tripDurationSec % 60
+                        Text(
+                            text = "${mins}m ${secs}s",
+                            fontFamily = FontFamily.SansSerif,
+                            fontWeight = FontWeight.Bold,
+                            fontSize = 11.sp,
+                            color = TextPrimaryWhite
                         )
                     }
                 }
             }
         }
 
-        // Bottom: Now Playing Media Card
+        // Bottom: Real Media Player Card (No fake Kavinsky / 42%)
         Box(
             modifier = Modifier
                 .fillMaxWidth()
@@ -278,119 +314,192 @@ fun FuelAndMediaCard(
                 .border(1.dp, Color(0x1AFFFFFF), RoundedCornerShape(14.dp))
                 .padding(10.dp)
         ) {
-            Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    // Stylized Album Art Thumbnail
-                    Box(
-                        modifier = Modifier
-                            .size(38.dp)
-                            .clip(RoundedCornerShape(8.dp))
-                            .background(
-                                Brush.linearGradient(
-                                    listOf(Color(0xFF0F172A), Color(0xFF1E1B4B), accentColor)
-                                )
-                            )
-                            .border(1.dp, Color(0x22FFFFFF), RoundedCornerShape(8.dp)),
-                        contentAlignment = Alignment.Center
+            if (telemetry.hasRealMediaSession && !telemetry.songTitle.isNullOrBlank()) {
+                // Real Live Playing Media
+                Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        verticalAlignment = Alignment.CenterVertically
                     ) {
-                        Icon(
-                            imageVector = Icons.Default.MusicNote,
-                            contentDescription = null,
-                            tint = TextPrimaryWhite,
-                            modifier = Modifier.size(20.dp)
-                        )
+                        Box(
+                            modifier = Modifier
+                                .size(36.dp)
+                                .clip(RoundedCornerShape(8.dp))
+                                .background(accentColor.copy(alpha = 0.2f))
+                                .border(1.dp, accentColor.copy(alpha = 0.5f), RoundedCornerShape(8.dp)),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.MusicNote,
+                                contentDescription = null,
+                                tint = accentColor,
+                                modifier = Modifier.size(18.dp)
+                            )
+                        }
+
+                        Spacer(modifier = Modifier.width(10.dp))
+
+                        Column(modifier = Modifier.weight(1f)) {
+                            Text(
+                                text = telemetry.songTitle ?: "Audio Track",
+                                fontFamily = FontFamily.SansSerif,
+                                fontWeight = FontWeight.Bold,
+                                fontSize = 12.sp,
+                                color = TextPrimaryWhite,
+                                maxLines = 1
+                            )
+                            Text(
+                                text = telemetry.songArtist ?: "Now Playing",
+                                fontFamily = FontFamily.SansSerif,
+                                fontWeight = FontWeight.Normal,
+                                fontSize = 10.sp,
+                                color = TextSecondaryGrey,
+                                maxLines = 1
+                            )
+                        }
                     }
 
-                    Spacer(modifier = Modifier.width(10.dp))
-
-                    Column(modifier = Modifier.weight(1f)) {
-                        Text(
-                            text = telemetry.songTitle,
-                            fontFamily = FontFamily.SansSerif,
-                            fontWeight = FontWeight.Bold,
-                            fontSize = 13.sp,
-                            color = TextPrimaryWhite,
-                            maxLines = 1
-                        )
-                        Text(
-                            text = telemetry.songArtist,
-                            fontFamily = FontFamily.SansSerif,
-                            fontWeight = FontWeight.Normal,
-                            fontSize = 11.sp,
-                            color = TextSecondaryGrey,
-                            maxLines = 1
-                        )
-                    }
-                }
-
-                // Scrubber Bar
-                Box(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .height(3.dp)
-                        .clip(RoundedCornerShape(1.5.dp))
-                        .background(Color(0x22FFFFFF))
-                ) {
+                    // Scrubber Bar
                     Box(
                         modifier = Modifier
-                            .fillMaxWidth(telemetry.mediaProgress)
+                            .fillMaxWidth()
                             .height(3.dp)
                             .clip(RoundedCornerShape(1.5.dp))
-                            .background(accentColor)
-                    )
-                }
+                            .background(Color(0x22FFFFFF))
+                    ) {
+                        Box(
+                            modifier = Modifier
+                                .fillMaxWidth(telemetry.mediaProgress)
+                                .height(3.dp)
+                                .clip(RoundedCornerShape(1.5.dp))
+                                .background(accentColor)
+                        )
+                    }
 
-                // Minimal Transport Controls
+                    // Real Transport Controls
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.Center,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        IconButton(
+                            onClick = onSkipPrevious,
+                            modifier = Modifier.size(30.dp)
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.SkipPrevious,
+                                contentDescription = "Previous",
+                                tint = TextPrimaryWhite,
+                                modifier = Modifier.size(16.dp)
+                            )
+                        }
+
+                        Spacer(modifier = Modifier.width(10.dp))
+
+                        Box(
+                            modifier = Modifier
+                                .size(28.dp)
+                                .clip(CircleShape)
+                                .background(accentColor)
+                                .clickable { onTogglePlayback() },
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Icon(
+                                imageVector = if (telemetry.isMediaPlaying) Icons.Default.Pause else Icons.Default.PlayArrow,
+                                contentDescription = if (telemetry.isMediaPlaying) "Pause" else "Play",
+                                tint = if (accentColor == BmwCyan) TextDark else TextPrimaryWhite,
+                                modifier = Modifier.size(16.dp)
+                            )
+                        }
+
+                        Spacer(modifier = Modifier.width(10.dp))
+
+                        IconButton(
+                            onClick = onSkipNext,
+                            modifier = Modifier.size(30.dp)
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.SkipNext,
+                                contentDescription = "Next",
+                                tint = TextPrimaryWhite,
+                                modifier = Modifier.size(16.dp)
+                            )
+                        }
+                    }
+                }
+            } else {
+                // No active real media player
                 Row(
                     modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.Center,
-                    verticalAlignment = Alignment.CenterVertically
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.SpaceBetween
                 ) {
-                    IconButton(
-                        onClick = { /* Previous */ },
-                        modifier = Modifier.size(32.dp)
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        modifier = Modifier.weight(1f)
                     ) {
-                        Icon(
-                            imageVector = Icons.Default.SkipPrevious,
-                            contentDescription = "Previous",
-                            tint = TextPrimaryWhite,
-                            modifier = Modifier.size(18.dp)
-                        )
+                        Box(
+                            modifier = Modifier
+                                .size(32.dp)
+                                .clip(RoundedCornerShape(8.dp))
+                                .background(Color(0x1AFFFFFF)),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.MusicNote,
+                                contentDescription = null,
+                                tint = TextMuted,
+                                modifier = Modifier.size(16.dp)
+                            )
+                        }
+                        Spacer(modifier = Modifier.width(10.dp))
+                        Column {
+                            Text(
+                                text = "NO MEDIA PLAYING",
+                                fontFamily = FontFamily.SansSerif,
+                                fontWeight = FontWeight.Bold,
+                                fontSize = 11.sp,
+                                color = TextSecondaryGrey
+                            )
+                            Text(
+                                text = "Play audio on Spotify/YouTube Music",
+                                fontSize = 9.sp,
+                                color = TextMuted
+                            )
+                        }
                     }
 
-                    Spacer(modifier = Modifier.width(12.dp))
-
+                    // Button to open Notification Listener Settings
                     Box(
                         modifier = Modifier
-                            .size(28.dp)
-                            .clip(CircleShape)
-                            .background(accentColor)
-                            .clickable { onTogglePlayback() },
-                        contentAlignment = Alignment.Center
+                            .clip(RoundedCornerShape(8.dp))
+                            .background(Color(0x22FFFFFF))
+                            .clickable {
+                                try {
+                                    val intent = Intent(Settings.ACTION_NOTIFICATION_LISTENER_SETTINGS).apply {
+                                        flags = Intent.FLAG_ACTIVITY_NEW_TASK
+                                    }
+                                    context.startActivity(intent)
+                                } catch (_: Exception) {}
+                            }
+                            .padding(horizontal = 8.dp, vertical = 4.dp)
                     ) {
-                        Icon(
-                            imageVector = if (telemetry.isMediaPlaying) Icons.Default.Pause else Icons.Default.PlayArrow,
-                            contentDescription = if (telemetry.isMediaPlaying) "Pause" else "Play",
-                            tint = if (accentColor == BmwCyan) TextDark else TextPrimaryWhite,
-                            modifier = Modifier.size(16.dp)
-                        )
-                    }
-
-                    Spacer(modifier = Modifier.width(12.dp))
-
-                    IconButton(
-                        onClick = { /* Next */ },
-                        modifier = Modifier.size(32.dp)
-                    ) {
-                        Icon(
-                            imageVector = Icons.Default.SkipNext,
-                            contentDescription = "Next",
-                            tint = TextPrimaryWhite,
-                            modifier = Modifier.size(18.dp)
-                        )
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Text(
+                                text = "SYNC PERMISSION",
+                                fontFamily = FontFamily.SansSerif,
+                                fontWeight = FontWeight.Bold,
+                                fontSize = 8.sp,
+                                color = BmwCyan
+                            )
+                            Spacer(modifier = Modifier.width(3.dp))
+                            Icon(
+                                imageVector = Icons.Default.OpenInNew,
+                                contentDescription = null,
+                                tint = BmwCyan,
+                                modifier = Modifier.size(10.dp)
+                            )
+                        }
                     }
                 }
             }

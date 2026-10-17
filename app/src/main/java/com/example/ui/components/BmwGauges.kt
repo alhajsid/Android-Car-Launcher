@@ -153,6 +153,26 @@ fun BmwCenterHeroGauge(
                     )
                 }
 
+                // Overspeed Limit Alert Warning Badge
+                if (telemetry.overspeedAlert) {
+                    Box(
+                        modifier = Modifier
+                            .clip(RoundedCornerShape(6.dp))
+                            .background(BmwCrimson)
+                            .padding(horizontal = 10.dp, vertical = 2.dp)
+                    ) {
+                        Text(
+                            text = "SPEED LIMIT EXCEEDED",
+                            fontFamily = FontFamily.SansSerif,
+                            fontWeight = FontWeight.Black,
+                            fontSize = 10.sp,
+                            letterSpacing = 1.sp,
+                            color = Color.White
+                        )
+                    }
+                    Spacer(modifier = Modifier.height(2.dp))
+                }
+
                 // Ultra-Large Digital Speed Display
                 Row(
                     verticalAlignment = Alignment.Bottom,
@@ -166,7 +186,7 @@ fun BmwCenterHeroGauge(
                         fontSize = 94.sp,
                         lineHeight = 94.sp,
                         letterSpacing = (-4).sp,
-                        color = TextPrimaryWhite
+                        color = if (telemetry.overspeedAlert) BmwCrimson else TextPrimaryWhite
                     )
                     Spacer(modifier = Modifier.width(6.dp))
                     Text(
@@ -174,14 +194,15 @@ fun BmwCenterHeroGauge(
                         fontFamily = FontFamily.SansSerif,
                         fontWeight = FontWeight.Bold,
                         fontSize = 18.sp,
-                        color = accentColor,
+                        color = if (telemetry.overspeedAlert) BmwCrimson else accentColor,
                         modifier = Modifier.padding(bottom = 12.dp)
                     )
                 }
 
-                // Gear Selector Pill [ P R N D S ]
+                // Gear Selector Pill [ P R N D S / 1-6 ] with clear (EST) label
                 GearSelectorPill(
                     activeGear = if (isConnected) telemetry.currentGear else "-",
+                    isEstimated = telemetry.isGearEstimated && isConnected,
                     accentColor = accentColor
                 )
 
@@ -349,9 +370,12 @@ private fun BladeGaugeCanvas(
 @Composable
 private fun GearSelectorPill(
     activeGear: String,
+    isEstimated: Boolean = false,
     accentColor: Color
 ) {
     val gears = listOf("P", "R", "N", "D", "S")
+    val isNumberedGear = activeGear in listOf("1", "2", "3", "4", "5", "6")
+
     Row(
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.Center,
@@ -359,7 +383,7 @@ private fun GearSelectorPill(
             .clip(RoundedCornerShape(30.dp))
             .background(Color(0xD905070A))
             .border(1.dp, Color(0x22FFFFFF), RoundedCornerShape(30.dp))
-            .padding(horizontal = 14.dp, vertical = 3.dp)
+            .padding(horizontal = 12.dp, vertical = 3.dp)
     ) {
         gears.forEach { gear ->
             val isSelected = (gear == activeGear)
@@ -387,7 +411,46 @@ private fun GearSelectorPill(
                     fontWeight = FontWeight.SemiBold,
                     fontSize = 12.sp,
                     color = TextMuted.copy(alpha = 0.5f),
-                    modifier = Modifier.padding(horizontal = 5.dp)
+                    modifier = Modifier.padding(horizontal = 4.dp)
+                )
+            }
+        }
+
+        // If in numbered manual gear (e.g. 1st - 6th from calibration)
+        if (isNumberedGear) {
+            Spacer(modifier = Modifier.width(4.dp))
+            Box(
+                modifier = Modifier
+                    .clip(RoundedCornerShape(4.dp))
+                    .background(accentColor)
+                    .padding(horizontal = 8.dp, vertical = 2.dp),
+                contentAlignment = Alignment.Center
+            ) {
+                Text(
+                    text = "G$activeGear",
+                    fontFamily = FontFamily.SansSerif,
+                    fontWeight = FontWeight.ExtraBold,
+                    fontSize = 13.sp,
+                    color = if (accentColor == BmwCyan) TextDark else TextPrimaryWhite
+                )
+            }
+        }
+
+        // Estimated badge
+        if (isEstimated && activeGear != "-") {
+            Spacer(modifier = Modifier.width(6.dp))
+            Box(
+                modifier = Modifier
+                    .clip(RoundedCornerShape(3.dp))
+                    .background(Color(0x33FFFFFF))
+                    .padding(horizontal = 4.dp, vertical = 1.dp)
+            ) {
+                Text(
+                    text = "EST",
+                    fontFamily = FontFamily.SansSerif,
+                    fontWeight = FontWeight.Bold,
+                    fontSize = 8.sp,
+                    color = TextSecondaryGrey
                 )
             }
         }

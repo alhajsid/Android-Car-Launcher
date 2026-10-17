@@ -6,6 +6,7 @@ data class TelemetryData(
     val redlineRpm: Int = 7000,
     val maxRpm: Int = 8000,
     val currentGear: String = "-",
+    val isGearEstimated: Boolean = true,
     val coolantTemp: Int = 0,
     val coolantThreshold: Int = 105,
     val isOverheating: Boolean = false,
@@ -24,12 +25,21 @@ data class TelemetryData(
     val obdProtocol: String = "Standby",
     val driveMode: DriveMode = DriveMode.SPORT,
     val gpsSpeed: Int = 0,
-    val gpsSignalLevel: Int = 4, // 0..4 bars
-    val cellularSignalLevel: Int = 4,
-    val weatherTempC: Int = 21,
-    val weatherCondition: String = "Clear",
-    val songTitle: String = "Nightcall",
-    val songArtist: String = "Kavinsky",
-    val isMediaPlaying: Boolean = true,
-    val mediaProgress: Float = 0.42f
+    val hasGpsFix: Boolean = false,
+    val gpsAccuracyMeters: Float? = null,
+    val gpsSignalLevel: Int = 0, // 0..4 bars based on real location accuracy
+    val cellularSignalLevel: Int = 0,
+    val networkLabel: String = "OFFLINE",
+    val weatherTempC: Int? = null,
+    val weatherCondition: String? = null,
+    val songTitle: String? = null,
+    val songArtist: String? = null,
+    val isMediaPlaying: Boolean = false,
+    val mediaProgress: Float = 0f,
+    val hasRealMediaSession: Boolean = false,
+    val tripDistanceKm: Float = 0f,
+    val tripDurationSec: Long = 0L,
+    val overspeedAlert: Boolean = false,
+    val dtcCodes: List<String> = emptyList(),
+    val isMilActive: Boolean = false
 )

@@ -82,6 +82,40 @@ class ExampleUnitTest {
     }
 
     @Test
+    fun testParseDtcTroubleCodes() {
+        // Mode 03 response: "43 01 33 03 00 00 00>"
+        // 0x0133 -> P0133 (O2 Sensor Circuit Slow Response)
+        // 0x0300 -> P0300 (Random/Multiple Cylinder Misfire Detected)
+        val raw = "43 01 33 03 00 00 00>"
+        val dtcs = ObdProtocol.parseDtcCodes(raw)
+        assertEquals(2, dtcs.size)
+        assertEquals("P0133", dtcs[0])
+        assertEquals("P0300", dtcs[1])
+
+        // Empty response: "43 00 00 00 00 00 00>"
+        val emptyRaw = "43 00 00 00 00 00 00>"
+        val emptyDtcs = ObdProtocol.parseDtcCodes(emptyRaw)
+        assertEquals(0, emptyDtcs.size)
+    }
+
+    @Test
+    fun testParseMilStatus() {
+        // 4101 82 ... -> byte A = 0x82 -> bit 7 = 1 (MIL on), dtc count = 2
+        val milOnRaw = "41 01 82 07 E5 00>"
+        val milOn = ObdProtocol.parseMilStatus(milOnRaw)
+        assertNotNull(milOn)
+        assertEquals(true, milOn?.first)
+        assertEquals(2, milOn?.second)
+
+        // 4101 00 ... -> byte A = 0x00 -> bit 7 = 0 (MIL off), dtc count = 0
+        val milOffRaw = "41 01 00 07 E5 00>"
+        val milOff = ObdProtocol.parseMilStatus(milOffRaw)
+        assertNotNull(milOff)
+        assertEquals(false, milOff?.first)
+        assertEquals(0, milOff?.second)
+    }
+
+    @Test
     fun testParseErrorHandling() {
         assertNull(ObdProtocol.parseRpm("NO DATA>"))
         assertNull(ObdProtocol.parseRpm("UNABLE TO CONNECT>"))

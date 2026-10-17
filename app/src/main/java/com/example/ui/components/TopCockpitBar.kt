@@ -51,6 +51,7 @@ fun TopCockpitBar(
     currentTimeString: String,
     onOpenObdScreen: () -> Unit,
     isDefaultLauncher: Boolean = false,
+    isSimulating: Boolean = false,
     onMakeDefaultLauncher: (() -> Unit)? = null,
     modifier: Modifier = Modifier
 ) {
@@ -163,6 +164,27 @@ fun TopCockpitBar(
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(10.dp)
         ) {
+            // Prominent Simulation Active Badge if enabled
+            if (isSimulating) {
+                Box(
+                    modifier = Modifier
+                        .clip(RoundedCornerShape(12.dp))
+                        .background(BmwAmber.copy(alpha = 0.25f))
+                        .border(1.dp, BmwAmber, RoundedCornerShape(12.dp))
+                        .padding(horizontal = 8.dp, vertical = 3.dp)
+                        .testTag("simulation_mode_badge")
+                ) {
+                    Text(
+                        text = "SIMULATION ON",
+                        fontFamily = FontFamily.SansSerif,
+                        fontWeight = FontWeight.Black,
+                        fontSize = 9.sp,
+                        letterSpacing = 0.8.sp,
+                        color = BmwAmber
+                    )
+                }
+            }
+
             // OBD Chip (Direct tap opens OBD scanning / diagnostics)
             Box(
                 modifier = Modifier
@@ -203,16 +225,47 @@ fun TopCockpitBar(
                 }
             }
 
-            // GPS Signal Icon
-            Icon(
-                imageVector = if (telemetry.gpsSignalLevel > 0) Icons.Default.GpsFixed else Icons.Default.GpsNotFixed,
-                contentDescription = "GPS Status",
-                tint = if (telemetry.gpsSignalLevel > 0) BmwCyan else TextMuted,
-                modifier = Modifier.size(16.dp)
-            )
+            // GPS Signal Icon & Fix State
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Icon(
+                    imageVector = if (telemetry.hasGpsFix) Icons.Default.GpsFixed else Icons.Default.GpsNotFixed,
+                    contentDescription = "GPS Status",
+                    tint = if (telemetry.hasGpsFix) BmwCyan else TextMuted,
+                    modifier = Modifier.size(16.dp)
+                )
+                if (telemetry.hasGpsFix && telemetry.gpsAccuracyMeters != null) {
+                    Spacer(modifier = Modifier.width(3.dp))
+                    Text(
+                        text = "±${telemetry.gpsAccuracyMeters.toInt()}m",
+                        fontFamily = FontFamily.SansSerif,
+                        fontWeight = FontWeight.SemiBold,
+                        fontSize = 8.sp,
+                        color = BmwCyan
+                    )
+                }
+            }
+
+            // Check Engine MIL Indicator if active
+            if (telemetry.isMilActive || telemetry.dtcCodes.isNotEmpty()) {
+                Box(
+                    modifier = Modifier
+                        .clip(RoundedCornerShape(4.dp))
+                        .background(BmwAmber.copy(alpha = 0.2f))
+                        .border(1.dp, BmwAmber, RoundedCornerShape(4.dp))
+                        .padding(horizontal = 6.dp, vertical = 2.dp)
+                ) {
+                    Text(
+                        text = "CEL ${telemetry.dtcCodes.size} DTC",
+                        fontFamily = FontFamily.SansSerif,
+                        fontWeight = FontWeight.Bold,
+                        fontSize = 9.sp,
+                        color = BmwAmber
+                    )
+                }
+            }
         }
 
-        // Right: Telemetry Vital Context (Alternator, 5G, Clock)
+        // Right: Telemetry Vital Context (Alternator, Network, Clock)
         Row(
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(10.dp)
@@ -250,17 +303,17 @@ fun TopCockpitBar(
                 )
             }
 
-            // 5G Signal bars
+            // Real Network Signal
             Row(
                 verticalAlignment = Alignment.Bottom,
                 horizontalArrangement = Arrangement.spacedBy(2.dp)
             ) {
                 Text(
-                    text = "5G",
+                    text = telemetry.networkLabel,
                     fontFamily = FontFamily.SansSerif,
                     fontWeight = FontWeight.Bold,
-                    fontSize = 11.sp,
-                    color = TextPrimaryWhite,
+                    fontSize = 10.sp,
+                    color = if (telemetry.cellularSignalLevel > 0) TextPrimaryWhite else TextMuted,
                     modifier = Modifier.padding(bottom = 1.dp)
                 )
                 val heights = listOf(4.dp, 7.dp, 10.dp, 13.dp)

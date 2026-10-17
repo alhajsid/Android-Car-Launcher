@@ -5,6 +5,8 @@ import android.bluetooth.BluetoothAdapter
 import android.bluetooth.BluetoothDevice
 import android.bluetooth.BluetoothManager
 import android.bluetooth.BluetoothSocket
+import android.bluetooth.le.ScanCallback
+import android.bluetooth.le.ScanResult
 import android.content.Context
 import android.util.Log
 import com.example.model.ObdAdapterDevice
@@ -29,7 +31,7 @@ class ObdBluetoothConnectionManager(
     companion object {
         private const val TAG = "ObdBluetoothMgr"
         val SPP_UUID: UUID = UUID.fromString("00001101-0000-1000-8000-00805F9B34FB")
-        
+
         // Common OBD2 adapter name identifiers
         val OBD_NAME_KEYWORDS = listOf(
             "obd", "elm", "vlink", "link", "car", "torque",
@@ -56,12 +58,12 @@ class ObdBluetoothConnectionManager(
     private val _activeDevice = MutableStateFlow<ObdAdapterDevice?>(null)
     val activeDevice: StateFlow<ObdAdapterDevice?> = _activeDevice.asStateFlow()
 
+    private val _discoveredBleDevices = MutableStateFlow<List<ObdAdapterDevice>>(emptyList())
+    val discoveredBleDevices: StateFlow<List<ObdAdapterDevice>> = _discoveredBleDevices.asStateFlow()
+
     val isConnected: Boolean
         get() = activeSocket?.isConnected == true && _connectionStatus.value == ObdConnectionStatus.CONNECTED
 
-    /**
-     * Checks if Bluetooth hardware is available and enabled
-     */
     fun isBluetoothEnabled(): Boolean {
         return bluetoothAdapter?.isEnabled == true
     }
@@ -84,10 +86,9 @@ class ObdBluetoothConnectionManager(
                         id = device.address,
                         name = name,
                         address = device.address,
-                        type = ObdConnectionType.BLUETOOTH_CLASSIC,
-                        signalDbm = if (isObd) -42 else -65,
+                        type = if (device.type == BluetoothDevice.DEVICE_TYPE_LE) ObdConnectionType.BLUETOOTH_BLE else ObdConnectionType.BLUETOOTH_CLASSIC,
                         isPaired = true,
-                        protocol = "SAE J1979 / CAN",
+                        protocol = if (isObd) "SAE J1979 / CAN" else "Bluetooth Device",
                         isRealHardware = true
                     )
                 )
@@ -96,7 +97,6 @@ class ObdBluetoothConnectionManager(
             Log.e(TAG, "Error enumerating bonded devices: ${e.message}")
         }
 
-        // Sort likely OBD adapters first
         return list.sortedByDescending { isLikelyObdAdapter(it.name) }
     }
 
@@ -107,6 +107,42 @@ class ObdBluetoothConnectionManager(
         if (name == null) return false
         val lower = name.lowercase()
         return OBD_NAME_KEYWORDS.any { lower.contains(it) }
+    }
+
+    /**
+     * Starts optional BLE scan for nearby low-energy OBD adapters (Vgate, Veepeak BLE)
+     */
+    @SuppressLint("MissingPermission")
+    fun startBleScan() {
+        val scanner = bluetoothAdapter?.bluetoothLeScanner ?: return
+        try {
+            val callback = object : ScanCallback() {
+                override fun onScanResult(callbackType: Int, result: ScanResult?) {
+                    val device = result?.device ?: return
+                    val name = device.name ?: return
+                    if (isLikelyObdAdapter(name)) {
+                        val current = _discoveredBleDevices.value.toMutableList()
+                        if (current.none { it.address == device.address }) {
+                            current.add(
+                                ObdAdapterDevice(
+                                    id = device.address,
+                                    name = name,
+                                    address = device.address,
+                                    type = ObdConnectionType.BLUETOOTH_BLE,
+                                    isPaired = false,
+                                    protocol = "BLE GATT CAN Service",
+                                    isRealHardware = true
+                                )
+                            )
+                            _discoveredBleDevices.value = current
+                        }
+                    }
+                }
+            }
+            scanner.startScan(callback)
+        } catch (e: Exception) {
+            Log.d(TAG, "BLE scan not available: ${e.message}")
+        }
     }
 
     /**
@@ -125,7 +161,6 @@ class ObdBluetoothConnectionManager(
             return@withContext false
         }
 
-        // Always cancel active discovery before establishing RFCOMM socket
         try {
             if (adapter.isDiscovering) {
                 adapter.cancelDiscovery()
@@ -186,10 +221,7 @@ class ObdBluetoothConnectionManager(
         }
     }
 
-    /**
-     * Sends an ELM327 ASCII command and reads until the '>' prompt character
-     */
-    fun sendCommand(cmd: String, timeoutMs: Long = 1200): String {
+    fun sendCommand(cmd: String, timeoutMs: Long = 1000): String {
         val out = outputStream ?: return "ERROR: NOT CONNECTED"
         val inStream = inputStream ?: return "ERROR: NOT CONNECTED"
 
@@ -224,9 +256,6 @@ class ObdBluetoothConnectionManager(
         }
     }
 
-    /**
-     * Closes the active Bluetooth socket and streams
-     */
     fun disconnect() {
         try {
             inputStream?.close()

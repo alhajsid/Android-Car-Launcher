@@ -44,6 +44,7 @@ import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.Shop
 import androidx.compose.material.icons.filled.Speed
+import androidx.compose.material.icons.filled.Star
 import androidx.compose.material.icons.filled.Troubleshoot
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
@@ -78,6 +79,7 @@ import androidx.compose.ui.unit.sp
 import com.example.model.AppCategory
 import com.example.model.AppShortcut
 import com.example.model.TelemetryData
+import com.example.model.UserSettings
 import com.example.ui.components.CockpitDock
 import com.example.ui.theme.BmwCyan
 import com.example.ui.theme.BmwOptimalGreen
@@ -92,9 +94,11 @@ import kotlinx.coroutines.launch
 @Composable
 fun AllAppsScreen(
     telemetry: TelemetryData,
+    settings: UserSettings = UserSettings(),
     apps: List<AppShortcut>,
     isDefaultLauncher: Boolean = false,
     onLaunchApp: (String) -> Unit,
+    onToggleFavorite: (String) -> Unit = {},
     onMakeDefaultLauncher: () -> Unit,
     onBackToCockpit: () -> Unit,
     modifier: Modifier = Modifier
@@ -108,11 +112,13 @@ fun AllAppsScreen(
     val scope = rememberCoroutineScope()
     val snackbarHostState = remember { SnackbarHostState() }
 
-    val filteredApps = remember(apps, selectedCategory, searchQuery) {
+    val filteredApps = remember(apps, selectedCategory, searchQuery, settings.favoritePackages, settings.hiddenPackages) {
         apps.filter { app ->
+            if (settings.hiddenPackages.contains(app.packageName)) return@filter false
+            val isFav = settings.favoritePackages.contains(app.packageName)
             val matchCat = when (selectedCategory) {
                 AppCategory.ALL -> true
-                AppCategory.FAVORITES -> app.isFavorite
+                AppCategory.FAVORITES -> isFav
                 else -> app.category == selectedCategory
             }
             val matchQuery = searchQuery.isBlank() || app.name.contains(searchQuery, ignoreCase = true)
@@ -370,18 +376,18 @@ fun AllAppsScreen(
                 verticalArrangement = Arrangement.spacedBy(20.dp)
             ) {
                 items(filteredApps, key = { it.id }) { app ->
+                    val isFav = settings.favoritePackages.contains(app.packageName)
                     AppLauncherTile(
                         app = app,
+                        isFavorite = isFav,
                         onClick = {
                             val launched = onLaunchApp(app.packageName)
                             scope.launch {
                                 snackbarHostState.showSnackbar("Launching ${app.name}...")
                             }
                         },
-                        onLongClick = {
-                            scope.launch {
-                                snackbarHostState.showSnackbar("${app.name} pinned to dock")
-                            }
+                        onToggleFavorite = {
+                            onToggleFavorite(app.packageName)
                         }
                     )
                 }
@@ -415,8 +421,9 @@ fun AllAppsScreen(
 @Composable
 private fun AppLauncherTile(
     app: AppShortcut,
+    isFavorite: Boolean,
     onClick: () -> Unit,
-    onLongClick: () -> Unit
+    onToggleFavorite: () -> Unit
 ) {
     Column(
         modifier = Modifier
@@ -452,6 +459,25 @@ private fun AppLauncherTile(
                     contentDescription = app.name,
                     tint = app.accentColor,
                     modifier = Modifier.size(34.dp)
+                )
+            }
+
+            // Favorite Pin Star Badge
+            Box(
+                modifier = Modifier
+                    .align(Alignment.TopEnd)
+                    .padding(4.dp)
+                    .size(20.dp)
+                    .clip(CircleShape)
+                    .background(if (isFavorite) Color(0xFFFFB800) else Color(0x66000000))
+                    .clickable { onToggleFavorite() },
+                contentAlignment = Alignment.Center
+            ) {
+                Icon(
+                    imageVector = Icons.Default.Star,
+                    contentDescription = "Pin Favorite",
+                    tint = if (isFavorite) Color.Black else Color(0x80FFFFFF),
+                    modifier = Modifier.size(12.dp)
                 )
             }
         }

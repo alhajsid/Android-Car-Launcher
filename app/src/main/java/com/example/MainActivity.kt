@@ -1,7 +1,14 @@
 package com.example
 
 import android.Manifest
+import android.content.Context
+import android.content.Intent
 import android.content.pm.PackageManager
+import android.hardware.Sensor
+import android.hardware.SensorEvent
+import android.hardware.SensorEventListener
+import android.hardware.SensorManager
+import android.net.Uri
 import android.os.Build
 import android.os.Bundle
 import android.view.WindowManager
@@ -34,6 +41,7 @@ import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.compose.LocalLifecycleOwner
 import com.example.data.AppsRepository
 import com.example.data.TelemetryRepository
+import com.example.model.DisplayBrightnessMode
 import com.example.model.DriveMode
 import com.example.ui.screens.AllAppsScreen
 import com.example.ui.screens.HudMirrorScreen
@@ -51,20 +59,26 @@ enum class CockpitScreen {
     SETTINGS
 }
 
-class MainActivity : ComponentActivity() {
+class MainActivity : ComponentActivity(), SensorEventListener {
 
     private lateinit var telemetryRepository: TelemetryRepository
     private lateinit var appsRepository: AppsRepository
+    private var sensorManager: SensorManager? = null
+    private var lightSensor: Sensor? = null
+    private var currentBrightnessMode: DisplayBrightnessMode = DisplayBrightnessMode.NIGHT_OLED
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
 
-        // Keep screen alive on vehicle mount
+        // Keep screen awake for vehicle mount
         window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
 
         telemetryRepository = TelemetryRepository(applicationContext)
         appsRepository = AppsRepository(applicationContext)
+
+        sensorManager = getSystemService(Context.SENSOR_SERVICE) as? SensorManager
+        lightSensor = sensorManager?.getDefaultSensor(Sensor.TYPE_LIGHT)
 
         setContent {
             val telemetry by telemetryRepository.telemetry.collectAsState()
@@ -82,10 +96,21 @@ class MainActivity : ComponentActivity() {
             var isDefaultLauncher by remember { mutableStateOf(appsRepository.isDefaultLauncher()) }
             val lifecycleOwner = LocalLifecycleOwner.current
 
+            // Update brightness based on user settings
+            LaunchedEffect(settings.brightnessMode) {
+                currentBrightnessMode = settings.brightnessMode
+                applyBrightnessMode(settings.brightnessMode)
+            }
+
             // Permission Request Launcher for Bluetooth & Location
             val permissionLauncher = rememberLauncherForActivityResult(
                 ActivityResultContracts.RequestMultiplePermissions()
             ) { permissions ->
+                val locGranted = permissions[Manifest.permission.ACCESS_FINE_LOCATION] == true
+                if (locGranted) {
+                    telemetryRepository.registerGpsListener()
+                }
+
                 val btGranted = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
                     permissions[Manifest.permission.BLUETOOTH_CONNECT] == true
                 } else true
@@ -106,6 +131,11 @@ class MainActivity : ComponentActivity() {
                         neededPermissions.add(Manifest.permission.BLUETOOTH_SCAN)
                     }
                 }
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+                    if (checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED) {
+                        neededPermissions.add(Manifest.permission.POST_NOTIFICATIONS)
+                    }
+                }
                 if (checkSelfPermission(Manifest.permission.ACCESS_FINE_LOCATION) != PackageManager.PERMISSION_GRANTED) {
                     neededPermissions.add(Manifest.permission.ACCESS_FINE_LOCATION)
                 }
@@ -121,11 +151,18 @@ class MainActivity : ComponentActivity() {
                         isDefaultLauncher = appsRepository.isDefaultLauncher()
                         appsRepository.loadAppsAsync()
                         telemetryRepository.realObdManager.refreshDevices()
+                        telemetryRepository.registerGpsListener()
+                        if (currentBrightnessMode == DisplayBrightnessMode.AUTO && lightSensor != null) {
+                            sensorManager?.registerListener(this@MainActivity, lightSensor, SensorManager.SENSOR_DELAY_NORMAL)
+                        }
+                    } else if (event == Lifecycle.Event.ON_PAUSE) {
+                        sensorManager?.unregisterListener(this@MainActivity)
                     }
                 }
                 lifecycleOwner.lifecycle.addObserver(observer)
                 onDispose {
                     lifecycleOwner.lifecycle.removeObserver(observer)
+                    sensorManager?.unregisterListener(this@MainActivity)
                 }
             }
 
@@ -160,36 +197,47 @@ class MainActivity : ComponentActivity() {
                                     onTogglePlayback = {
                                         telemetryRepository.toggleMediaPlayback()
                                     },
+                                    onSkipNext = {
+                                        telemetryRepository.skipNextMedia()
+                                    },
+                                    onSkipPrevious = {
+                                        telemetryRepository.skipPrevMedia()
+                                    },
                                     onNavigate = { destination ->
                                         when (destination) {
                                             "all_apps" -> currentScreen = CockpitScreen.ALL_APPS
                                             "hud_mirror" -> currentScreen = CockpitScreen.HUD_MIRROR
                                             "settings" -> currentScreen = CockpitScreen.SETTINGS
+                                            "obd_diagnostics" -> currentScreen = CockpitScreen.OBD_CONNECT
                                             "maps" -> {
                                                 val launched = appsRepository.launchApp("com.google.android.apps.maps")
+                                                    || appsRepository.launchApp("com.waze")
                                                 if (!launched) {
-                                                    scope.launch {
-                                                        snackbarHostState.showSnackbar("Opening Navigation...")
+                                                    try {
+                                                        val geoIntent = Intent(Intent.ACTION_VIEW, Uri.parse("geo:0,0?q=gas+station")).apply {
+                                                            flags = Intent.FLAG_ACTIVITY_NEW_TASK
+                                                        }
+                                                        startActivity(geoIntent)
+                                                    } catch (_: Exception) {
+                                                        scope.launch { snackbarHostState.showSnackbar("No maps app found") }
                                                     }
                                                 }
                                             }
                                             "music" -> {
                                                 val launched = appsRepository.launchApp("com.spotify.music")
+                                                    || appsRepository.launchApp("com.google.android.apps.youtube.music")
                                                 if (!launched) {
                                                     telemetryRepository.toggleMediaPlayback()
                                                 }
                                             }
-                                            "android_auto" -> {
-                                                val launched = appsRepository.launchApp("com.google.android.projection.gearhead")
-                                                if (!launched) {
-                                                    scope.launch {
-                                                        snackbarHostState.showSnackbar("Android Auto ready")
+                                            "phone" -> {
+                                                try {
+                                                    val dialIntent = Intent(Intent.ACTION_DIAL).apply {
+                                                        flags = Intent.FLAG_ACTIVITY_NEW_TASK
                                                     }
-                                                }
-                                            }
-                                            "carplay" -> {
-                                                scope.launch {
-                                                    snackbarHostState.showSnackbar("Apple CarPlay wireless projection link ready")
+                                                    startActivity(dialIntent)
+                                                } catch (_: Exception) {
+                                                    scope.launch { snackbarHostState.showSnackbar("Dialer unavailable") }
                                                 }
                                             }
                                         }
@@ -210,10 +258,18 @@ class MainActivity : ComponentActivity() {
                             CockpitScreen.ALL_APPS -> {
                                 AllAppsScreen(
                                     telemetry = telemetry,
+                                    settings = settings,
                                     apps = if (installedApps.isNotEmpty()) installedApps else appsRepository.getInstalledApps(),
                                     isDefaultLauncher = isDefaultLauncher,
                                     onLaunchApp = { pkg ->
                                         appsRepository.launchApp(pkg)
+                                    },
+                                    onToggleFavorite = { pkg ->
+                                        telemetryRepository.updateSettings { current ->
+                                            val favs = current.favoritePackages.toMutableSet()
+                                            if (favs.contains(pkg)) favs.remove(pkg) else favs.add(pkg)
+                                            current.copy(favoritePackages = favs)
+                                        }
                                     },
                                     onMakeDefaultLauncher = {
                                         appsRepository.makeDefaultLauncher(this@MainActivity)
@@ -229,6 +285,10 @@ class MainActivity : ComponentActivity() {
                                 HudMirrorScreen(
                                     telemetry = telemetry,
                                     speedUnit = settings.speedUnit,
+                                    isMirrored = settings.isHudMirrored,
+                                    onToggleMirror = { mirrored ->
+                                        telemetryRepository.updateSettings { it.copy(isHudMirrored = mirrored) }
+                                    },
                                     onExit = {
                                         currentScreen = CockpitScreen.DASHBOARD
                                     },
@@ -262,6 +322,12 @@ class MainActivity : ComponentActivity() {
                                     onToggleSimulation = { enable ->
                                         telemetryRepository.updateSettings { it.copy(isSimulatingTelemetry = enable) }
                                     },
+                                    onScanDtc = {
+                                        telemetryRepository.scanDtc()
+                                    },
+                                    onClearDtc = {
+                                        telemetryRepository.clearDtc()
+                                    },
                                     onBack = {
                                         currentScreen = CockpitScreen.DASHBOARD
                                     },
@@ -272,9 +338,16 @@ class MainActivity : ComponentActivity() {
                             CockpitScreen.SETTINGS -> {
                                 SettingsScreen(
                                     settings = settings,
+                                    telemetry = telemetry,
                                     isDefaultLauncher = isDefaultLauncher,
                                     onUpdateSettings = { transform ->
                                         telemetryRepository.updateSettings(transform)
+                                    },
+                                    onCalibrateGear = { gear ->
+                                        scope.launch {
+                                            telemetryRepository.calibrateCurrentGear(gear)
+                                            snackbarHostState.showSnackbar("Calibrated Gear $gear to current speed/RPM")
+                                        }
                                     },
                                     onOpenHudMirror = {
                                         currentScreen = CockpitScreen.HUD_MIRROR
@@ -297,4 +370,46 @@ class MainActivity : ComponentActivity() {
             }
         }
     }
+
+    private fun applyBrightnessMode(mode: DisplayBrightnessMode) {
+        val lp = window.attributes
+        when (mode) {
+            DisplayBrightnessMode.DAY -> {
+                sensorManager?.unregisterListener(this)
+                lp.screenBrightness = 1.0f
+                window.attributes = lp
+            }
+            DisplayBrightnessMode.NIGHT_OLED -> {
+                sensorManager?.unregisterListener(this)
+                lp.screenBrightness = 0.25f
+                window.attributes = lp
+            }
+            DisplayBrightnessMode.AUTO -> {
+                if (lightSensor != null) {
+                    sensorManager?.registerListener(this, lightSensor, SensorManager.SENSOR_DELAY_NORMAL)
+                } else {
+                    lp.screenBrightness = WindowManager.LayoutParams.BRIGHTNESS_OVERRIDE_NONE
+                    window.attributes = lp
+                }
+            }
+        }
+    }
+
+    override fun onSensorChanged(event: SensorEvent?) {
+        if (event?.sensor?.type == Sensor.TYPE_LIGHT && currentBrightnessMode == DisplayBrightnessMode.AUTO) {
+            val lux = event.values[0]
+            val brightness = when {
+                lux > 1000f -> 1.0f
+                lux > 300f -> 0.75f
+                lux > 80f -> 0.50f
+                lux > 20f -> 0.35f
+                else -> 0.20f
+            }
+            val lp = window.attributes
+            lp.screenBrightness = brightness
+            window.attributes = lp
+        }
+    }
+
+    override fun onAccuracyChanged(sensor: Sensor?, accuracy: Int) {}
 }

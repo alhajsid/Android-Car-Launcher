@@ -29,16 +29,15 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ArrowBack
 import androidx.compose.material.icons.filled.Bluetooth
+import androidx.compose.material.icons.filled.Build
 import androidx.compose.material.icons.filled.CheckCircle
+import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Refresh
-import androidx.compose.material.icons.filled.Sensors
-import androidx.compose.material.icons.filled.Wifi
+import androidx.compose.material.icons.filled.Warning
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
-import androidx.compose.material3.OutlinedTextField
-import androidx.compose.material3.OutlinedTextFieldDefaults
 import androidx.compose.material3.Switch
 import androidx.compose.material3.SwitchDefaults
 import androidx.compose.material3.Text
@@ -47,6 +46,7 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -77,6 +77,7 @@ import com.example.ui.theme.TextDark
 import com.example.ui.theme.TextMuted
 import com.example.ui.theme.TextPrimaryWhite
 import com.example.ui.theme.TextSecondaryGrey
+import kotlinx.coroutines.launch
 
 @Composable
 fun ObdConnectionScreen(
@@ -90,13 +91,17 @@ fun ObdConnectionScreen(
     onConnectAdapter: (String) -> Unit,
     onDisconnectAdapter: () -> Unit,
     onToggleSimulation: (Boolean) -> Unit,
+    onScanDtc: suspend () -> List<String> = { emptyList() },
+    onClearDtc: suspend () -> Boolean = { false },
     onBack: () -> Unit,
     modifier: Modifier = Modifier
 ) {
     val accentColor = telemetry.driveMode.primaryColor
     val logListState = rememberLazyListState()
+    val scope = rememberCoroutineScope()
+    var isDtcScanning by remember { mutableStateOf(false) }
+    var dtcStatusMessage by remember { mutableStateOf("") }
 
-    // Request Bluetooth and Location permissions if needed
     val permissionLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.RequestMultiplePermissions()
     ) {
@@ -155,7 +160,7 @@ fun ObdConnectionScreen(
                 // Status Badge in Header
                 val statusText = when (obdStatus) {
                     ObdConnectionStatus.CONNECTED -> "REAL OBD-II CAN LINKED"
-                    ObdConnectionStatus.CONNECTING -> "ESTABLISHING RFCOMM / TCP..."
+                    ObdConnectionStatus.CONNECTING -> "ESTABLISHING RFCOMM LINK..."
                     ObdConnectionStatus.INITIALIZING_ELM -> "ELM327 HANDSHAKING..."
                     ObdConnectionStatus.BUS_INIT_CAN -> "BUS AUTO-DETECT..."
                     ObdConnectionStatus.SCANNING -> "SCANNING BLUETOOTH..."
@@ -234,9 +239,39 @@ fun ObdConnectionScreen(
                 }
             }
 
-            Spacer(modifier = Modifier.height(14.dp))
+            // Simulation Active Warning Banner
+            if (settings.isSimulatingTelemetry) {
+                Spacer(modifier = Modifier.height(8.dp))
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clip(RoundedCornerShape(10.dp))
+                        .background(BmwAmber.copy(alpha = 0.2f))
+                        .border(1.dp, BmwAmber, RoundedCornerShape(10.dp))
+                        .padding(horizontal = 12.dp, vertical = 6.dp)
+                ) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Icon(
+                            imageVector = Icons.Default.Warning,
+                            contentDescription = null,
+                            tint = BmwAmber,
+                            modifier = Modifier.size(16.dp)
+                        )
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Text(
+                            text = "SIMULATION ACTIVE: Synthetic telemetry enabled for desk testing. Turn off when connected to vehicle.",
+                            fontFamily = FontFamily.SansSerif,
+                            fontWeight = FontWeight.Bold,
+                            fontSize = 11.sp,
+                            color = BmwAmber
+                        )
+                    }
+                }
+            }
 
-            // Split View: Left (OBD Port Graphic & Live Diagnostic Terminal) / Right (Adapters List)
+            Spacer(modifier = Modifier.height(10.dp))
+
+            // Split View: Left (Terminal & Port) / Right (Adapters & DTC Diagnostic Tools)
             Row(
                 modifier = Modifier
                     .weight(1f)
@@ -246,12 +281,12 @@ fun ObdConnectionScreen(
                 // Left Column: OBD Diagnostic Port Diagram & Live Terminal Logs
                 Column(
                     modifier = Modifier
-                        .weight(1.1f)
+                        .weight(1.05f)
                         .clip(RoundedCornerShape(20.dp))
                         .background(GlassCardFill)
                         .border(1.dp, GlassCardBorder, RoundedCornerShape(20.dp))
-                        .padding(16.dp),
-                    verticalArrangement = Arrangement.spacedBy(10.dp)
+                        .padding(14.dp),
+                    verticalArrangement = Arrangement.spacedBy(8.dp)
                 ) {
                     Text(
                         text = "VEHICLE DIAGNOSTIC PORT (SAE J1962)",
@@ -262,10 +297,9 @@ fun ObdConnectionScreen(
                         color = TextSecondaryGrey
                     )
 
-                    // 16-Pin OBD-II Port Visual Diagram
                     ObdPortDiagram()
 
-                    // Desk Simulation Mode Toggle (for testing without vehicle connected)
+                    // Desk Simulation Mode Toggle
                     Row(
                         modifier = Modifier
                             .fillMaxWidth()
@@ -285,7 +319,7 @@ fun ObdConnectionScreen(
                                 color = TextPrimaryWhite
                             )
                             Text(
-                                text = "Use when testing app away from car",
+                                text = "Simulates RPM, Speed & Load away from vehicle",
                                 fontFamily = FontFamily.SansSerif,
                                 fontSize = 9.sp,
                                 color = TextSecondaryGrey
@@ -345,23 +379,121 @@ fun ObdConnectionScreen(
                     }
                 }
 
-                // Right Column: Detected & Paired Real Adapters
+                // Right Column: Available Adapters + DTC Fault Code Tools
                 Column(
                     modifier = Modifier
-                        .weight(1.1f)
+                        .weight(1.15f)
                         .clip(RoundedCornerShape(20.dp))
                         .background(GlassCardFill)
                         .border(1.dp, GlassCardBorder, RoundedCornerShape(20.dp))
-                        .padding(16.dp),
+                        .padding(14.dp),
                     verticalArrangement = Arrangement.spacedBy(10.dp)
                 ) {
+                    // DTC Trouble Code Scanner Card
+                    Box(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clip(RoundedCornerShape(14.dp))
+                            .background(Color(0xE605070A))
+                            .border(1.dp, Color(0x26FFFFFF), RoundedCornerShape(14.dp))
+                            .padding(10.dp)
+                    ) {
+                        Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Row(verticalAlignment = Alignment.CenterVertically) {
+                                    Icon(
+                                        imageVector = Icons.Default.Build,
+                                        contentDescription = null,
+                                        tint = if (telemetry.isMilActive || telemetry.dtcCodes.isNotEmpty()) BmwAmber else BmwOptimalGreen,
+                                        modifier = Modifier.size(16.dp)
+                                    )
+                                    Spacer(modifier = Modifier.width(6.dp))
+                                    Text(
+                                        text = "ECU DIAGNOSTIC TROUBLE CODES (DTC)",
+                                        fontFamily = FontFamily.SansSerif,
+                                        fontWeight = FontWeight.Bold,
+                                        fontSize = 11.sp,
+                                        color = TextPrimaryWhite
+                                    )
+                                }
+
+                                Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                                    // Scan DTC Button
+                                    Button(
+                                        onClick = {
+                                            scope.launch {
+                                                isDtcScanning = true
+                                                val codes = onScanDtc()
+                                                isDtcScanning = false
+                                                dtcStatusMessage = if (codes.isEmpty()) "No fault codes found" else "${codes.size} codes found"
+                                            }
+                                        },
+                                        colors = ButtonDefaults.buttonColors(containerColor = Color(0x334CC2FF)),
+                                        shape = RoundedCornerShape(8.dp)
+                                    ) {
+                                        Text("SCAN DTC (MODE 03)", fontSize = 9.sp, color = BmwCyan, fontWeight = FontWeight.Bold)
+                                    }
+
+                                    // Clear DTC Button
+                                    if (telemetry.dtcCodes.isNotEmpty()) {
+                                        Button(
+                                            onClick = {
+                                                scope.launch {
+                                                    val success = onClearDtc()
+                                                    dtcStatusMessage = if (success) "Codes cleared" else "Failed to clear"
+                                                }
+                                            },
+                                            colors = ButtonDefaults.buttonColors(containerColor = BmwCrimson.copy(alpha = 0.3f)),
+                                            shape = RoundedCornerShape(8.dp)
+                                        ) {
+                                            Icon(imageVector = Icons.Default.Delete, contentDescription = null, tint = BmwCrimson, modifier = Modifier.size(12.dp))
+                                            Spacer(modifier = Modifier.width(3.dp))
+                                            Text("CLEAR", fontSize = 9.sp, color = BmwCrimson, fontWeight = FontWeight.Bold)
+                                        }
+                                    }
+                                }
+                            }
+
+                            // DTC Results
+                            if (telemetry.dtcCodes.isNotEmpty()) {
+                                Row(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    horizontalArrangement = Arrangement.spacedBy(6.dp)
+                                ) {
+                                    telemetry.dtcCodes.forEach { code ->
+                                        Box(
+                                            modifier = Modifier
+                                                .clip(RoundedCornerShape(6.dp))
+                                                .background(BmwCrimson.copy(alpha = 0.25f))
+                                                .border(1.dp, BmwCrimson, RoundedCornerShape(6.dp))
+                                                .padding(horizontal = 8.dp, vertical = 3.dp)
+                                        ) {
+                                            Text(code, fontWeight = FontWeight.Black, fontSize = 11.sp, color = Color(0xFFFF8888))
+                                        }
+                                    }
+                                }
+                            } else {
+                                Text(
+                                    text = if (dtcStatusMessage.isNotEmpty()) dtcStatusMessage else if (obdStatus == ObdConnectionStatus.CONNECTED) "No active fault codes recorded in ECU." else "Connect to vehicle adapter to scan trouble codes.",
+                                    fontSize = 10.sp,
+                                    color = TextSecondaryGrey
+                                )
+                            }
+                        }
+                    }
+
+                    // Available Adapters List
                     Row(
                         modifier = Modifier.fillMaxWidth(),
                         horizontalArrangement = Arrangement.SpaceBetween,
                         verticalAlignment = Alignment.CenterVertically
                     ) {
                         Text(
-                            text = "AVAILABLE ADAPTERS (${adapters.size})",
+                            text = "DETECTED ADAPTERS (${adapters.size})",
                             fontFamily = FontFamily.SansSerif,
                             fontWeight = FontWeight.Bold,
                             fontSize = 11.sp,
@@ -370,26 +502,63 @@ fun ObdConnectionScreen(
                         )
 
                         Text(
-                            text = "Pair in phone Bluetooth first",
+                            text = "Pair in phone Bluetooth settings first",
                             fontFamily = FontFamily.SansSerif,
-                            fontSize = 10.sp,
+                            fontSize = 9.sp,
                             color = TextMuted
                         )
                     }
 
-                    LazyColumn(
-                        modifier = Modifier.fillMaxSize(),
-                        verticalArrangement = Arrangement.spacedBy(10.dp)
-                    ) {
-                        items(adapters, key = { it.id }) { device ->
-                            val isCurrentConnected = (obdStatus == ObdConnectionStatus.CONNECTED || obdStatus == ObdConnectionStatus.INITIALIZING_ELM) &&
-                                (telemetry.obdAdapterName == device.name)
-                            ObdAdapterCard(
-                                device = device,
-                                isConnected = isCurrentConnected,
-                                onConnect = { onConnectAdapter(device.id) },
-                                onDisconnect = { onDisconnectAdapter() }
-                            )
+                    if (adapters.isEmpty()) {
+                        Box(
+                            modifier = Modifier
+                                .weight(1f)
+                                .fillMaxWidth()
+                                .clip(RoundedCornerShape(12.dp))
+                                .background(Color(0x8005070A))
+                                .padding(16.dp),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                                Icon(
+                                    imageVector = Icons.Default.Bluetooth,
+                                    contentDescription = null,
+                                    tint = TextMuted,
+                                    modifier = Modifier.size(36.dp)
+                                )
+                                Spacer(modifier = Modifier.height(8.dp))
+                                Text(
+                                    text = "NO PAIRED BLUETOOTH ADAPTERS FOUND",
+                                    fontFamily = FontFamily.SansSerif,
+                                    fontWeight = FontWeight.Bold,
+                                    fontSize = 12.sp,
+                                    color = TextPrimaryWhite
+                                )
+                                Spacer(modifier = Modifier.height(4.dp))
+                                Text(
+                                    text = "Plug in your ELM327 / OBDLink adapter, open Android Bluetooth settings, pair with PIN (1234 or 0000), then tap Rescan.",
+                                    fontFamily = FontFamily.SansSerif,
+                                    fontSize = 10.sp,
+                                    color = TextSecondaryGrey,
+                                    lineHeight = 14.sp
+                                )
+                            }
+                        }
+                    } else {
+                        LazyColumn(
+                            modifier = Modifier.weight(1f),
+                            verticalArrangement = Arrangement.spacedBy(8.dp)
+                        ) {
+                            items(adapters, key = { it.id }) { device ->
+                                val isCurrentConnected = (obdStatus == ObdConnectionStatus.CONNECTED || obdStatus == ObdConnectionStatus.INITIALIZING_ELM) &&
+                                    (telemetry.obdAdapterName == device.name)
+                                ObdAdapterCard(
+                                    device = device,
+                                    isConnected = isCurrentConnected,
+                                    onConnect = { onConnectAdapter(device.id) },
+                                    onDisconnect = { onDisconnectAdapter() }
+                                )
+                            }
                         }
                     }
                 }
@@ -403,7 +572,7 @@ private fun ObdPortDiagram() {
     Canvas(
         modifier = Modifier
             .fillMaxWidth()
-            .height(64.dp)
+            .height(54.dp)
             .clip(RoundedCornerShape(8.dp))
             .background(Color(0xFF070B10))
             .border(1.dp, Color(0x22FFFFFF), RoundedCornerShape(8.dp))
@@ -411,7 +580,6 @@ private fun ObdPortDiagram() {
         val w = size.width
         val h = size.height
 
-        // Outer connector shell
         drawRoundRect(
             color = Color(0x33FFFFFF),
             topLeft = Offset(w * 0.08f, h * 0.15f),
@@ -420,7 +588,6 @@ private fun ObdPortDiagram() {
             style = Stroke(width = 2f)
         )
 
-        // 16 Pins (2 rows of 8 pins)
         val startX = w * 0.15f
         val stepX = (w * 0.7f) / 7f
         val row1Y = h * 0.35f
@@ -430,7 +597,7 @@ private fun ObdPortDiagram() {
             val px = startX + i * stepX
             val isPin6CanHigh = (i == 5)
             val color1 = if (isPin6CanHigh) BmwCyan else Color(0x66FFFFFF)
-            drawCircle(color = color1, radius = 4.5f, center = Offset(px, row1Y))
+            drawCircle(color = color1, radius = 4f, center = Offset(px, row1Y))
 
             val isPin14CanLow = (i == 5)
             val isPin16Power = (i == 7)
@@ -439,7 +606,7 @@ private fun ObdPortDiagram() {
                 isPin16Power -> BmwCrimson
                 else -> Color(0x66FFFFFF)
             }
-            drawCircle(color = color2, radius = 4.5f, center = Offset(px, row2Y))
+            drawCircle(color = color2, radius = 4f, center = Offset(px, row2Y))
         }
     }
 }
@@ -454,14 +621,14 @@ private fun ObdAdapterCard(
     Box(
         modifier = Modifier
             .fillMaxWidth()
-            .clip(RoundedCornerShape(14.dp))
+            .clip(RoundedCornerShape(12.dp))
             .background(if (isConnected) Color(0x2610B981) else Color(0x8005070A))
             .border(
                 1.dp,
                 if (isConnected) BmwOptimalGreen.copy(alpha = 0.6f) else Color(0x1FFFFFFF),
-                RoundedCornerShape(14.dp)
+                RoundedCornerShape(12.dp)
             )
-            .padding(12.dp)
+            .padding(10.dp)
     ) {
         Row(
             modifier = Modifier.fillMaxWidth(),
@@ -472,19 +639,18 @@ private fun ObdAdapterCard(
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.spacedBy(10.dp)
             ) {
-                // Connection icon
                 Box(
                     modifier = Modifier
-                        .size(36.dp)
-                        .clip(RoundedCornerShape(10.dp))
+                        .size(34.dp)
+                        .clip(RoundedCornerShape(8.dp))
                         .background(if (isConnected) BmwOptimalGreen.copy(alpha = 0.2f) else Color(0x1AFFFFFF)),
                     contentAlignment = Alignment.Center
                 ) {
                     Icon(
-                        imageVector = if (device.type == ObdConnectionType.WIFI) Icons.Default.Wifi else Icons.Default.Bluetooth,
+                        imageVector = Icons.Default.Bluetooth,
                         contentDescription = null,
                         tint = if (isConnected) BmwOptimalGreen else TextPrimaryWhite,
-                        modifier = Modifier.size(20.dp)
+                        modifier = Modifier.size(18.dp)
                     )
                 }
 
@@ -497,58 +663,47 @@ private fun ObdAdapterCard(
                             fontSize = 12.sp,
                             color = TextPrimaryWhite
                         )
-                        if (device.isPaired) {
-                            Spacer(modifier = Modifier.width(6.dp))
-                            Box(
-                                modifier = Modifier
-                                    .clip(RoundedCornerShape(4.dp))
-                                    .background(Color(0x334CC2FF))
-                                    .padding(horizontal = 4.dp, vertical = 1.dp)
-                            ) {
-                                Text("PAIRED", fontSize = 8.sp, color = BmwCyan, fontWeight = FontWeight.Bold)
-                            }
+                        Spacer(modifier = Modifier.width(6.dp))
+                        Box(
+                            modifier = Modifier
+                                .clip(RoundedCornerShape(4.dp))
+                                .background(Color(0x334CC2FF))
+                                .padding(horizontal = 4.dp, vertical = 1.dp)
+                        ) {
+                            Text(device.type.label, fontSize = 7.sp, color = BmwCyan, fontWeight = FontWeight.Bold)
                         }
                     }
 
-                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                        Text(
-                            text = device.address,
-                            fontFamily = FontFamily.Monospace,
-                            fontSize = 10.sp,
-                            color = TextSecondaryGrey
-                        )
-                        Text(
-                            text = "${device.signalDbm} dBm",
-                            fontFamily = FontFamily.SansSerif,
-                            fontSize = 10.sp,
-                            color = TextMuted
-                        )
-                    }
+                    Text(
+                        text = device.address,
+                        fontFamily = FontFamily.Monospace,
+                        fontSize = 10.sp,
+                        color = TextSecondaryGrey
+                    )
                     Text(
                         text = device.protocol,
                         fontFamily = FontFamily.SansSerif,
                         fontSize = 9.sp,
-                        color = BmwCyan
+                        color = TextMuted
                     )
                 }
             }
 
-            // Action Button
             if (isConnected) {
                 Button(
                     onClick = onDisconnect,
                     colors = ButtonDefaults.buttonColors(containerColor = BmwCrimson.copy(alpha = 0.25f)),
-                    shape = RoundedCornerShape(10.dp)
+                    shape = RoundedCornerShape(8.dp)
                 ) {
-                    Text("DISCONNECT", fontSize = 10.sp, color = BmwCrimson, fontWeight = FontWeight.Bold)
+                    Text("DISCONNECT", fontSize = 9.sp, color = BmwCrimson, fontWeight = FontWeight.Bold)
                 }
             } else {
                 Button(
                     onClick = onConnect,
                     colors = ButtonDefaults.buttonColors(containerColor = BmwCyan),
-                    shape = RoundedCornerShape(10.dp)
+                    shape = RoundedCornerShape(8.dp)
                 ) {
-                    Text("CONNECT", fontSize = 10.sp, color = TextDark, fontWeight = FontWeight.Bold)
+                    Text("CONNECT", fontSize = 9.sp, color = TextDark, fontWeight = FontWeight.Bold)
                 }
             }
         }

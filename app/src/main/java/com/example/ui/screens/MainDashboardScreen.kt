@@ -72,6 +72,8 @@ fun MainDashboardScreen(
     isDefaultLauncher: Boolean,
     onSelectDriveMode: (DriveMode) -> Unit,
     onTogglePlayback: () -> Unit,
+    onSkipNext: () -> Unit = {},
+    onSkipPrevious: () -> Unit = {},
     onNavigate: (String) -> Unit,
     onOpenObdScreen: () -> Unit,
     onMakeDefaultLauncher: () -> Unit,
@@ -120,6 +122,7 @@ fun MainDashboardScreen(
                 currentTimeString = currentTimeString,
                 onOpenObdScreen = onOpenObdScreen,
                 isDefaultLauncher = isDefaultLauncher,
+                isSimulating = settings.isSimulatingTelemetry,
                 onMakeDefaultLauncher = onMakeDefaultLauncher,
                 modifier = Modifier.statusBarsPadding()
             )
@@ -250,6 +253,8 @@ fun MainDashboardScreen(
                             is24Hour = settings.is24HourClock,
                             accentColor = currentAccent,
                             onTogglePlayback = onTogglePlayback,
+                            onSkipNext = onSkipNext,
+                            onSkipPrevious = onSkipPrevious,
                             modifier = Modifier
                                 .weight(1.05f)
                                 .fillMaxWidth()
@@ -288,6 +293,8 @@ fun MainDashboardScreen(
                                 is24Hour = settings.is24HourClock,
                                 accentColor = currentAccent,
                                 onTogglePlayback = onTogglePlayback,
+                                onSkipNext = onSkipNext,
+                                onSkipPrevious = onSkipPrevious,
                                 modifier = Modifier.weight(1f)
                             )
                         }
