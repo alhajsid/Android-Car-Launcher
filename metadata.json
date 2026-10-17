@@ -1,0 +1,6 @@
+{
+  "name": "Vision HUD",
+  "description": "Minimalist 2026 BMW Neue Klasse inspired heads-up display launcher and OBD2 telemetry cockpit for car dashboards.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

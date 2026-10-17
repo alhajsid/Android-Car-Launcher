@@ -1,0 +1,35 @@
+package com.example.model
+
+data class TelemetryData(
+    val speed: Int = 0,
+    val rpm: Int = 0,
+    val redlineRpm: Int = 7000,
+    val maxRpm: Int = 8000,
+    val currentGear: String = "-",
+    val coolantTemp: Int = 0,
+    val coolantThreshold: Int = 105,
+    val isOverheating: Boolean = false,
+    val engLoadPercent: Int = 0,
+    val intakeAirTemp: Int = 0,
+    val throttlePercent: Int = 0,
+    val turboBoostBar: Float = 0f,
+    val mafFlowGs: Float = 0f,
+    val fuelLevelPercent: Int? = null,
+    val remainingRangeKm: Int? = null,
+    val instantFuelL100km: Float? = null,
+    val avgFuelL100km: Float? = null,
+    val alternatorVoltage: Float? = null,
+    val isObdConnected: Boolean = false,
+    val obdAdapterName: String = "Disconnected",
+    val obdProtocol: String = "Standby",
+    val driveMode: DriveMode = DriveMode.SPORT,
+    val gpsSpeed: Int = 0,
+    val gpsSignalLevel: Int = 4, // 0..4 bars
+    val cellularSignalLevel: Int = 4,
+    val weatherTempC: Int = 21,
+    val weatherCondition: String = "Clear",
+    val songTitle: String = "Nightcall",
+    val songArtist: String = "Kavinsky",
+    val isMediaPlaying: Boolean = true,
+    val mediaProgress: Float = 0.42f
+)
