@@ -641,8 +641,8 @@ private fun ObdAdapterCard(
             ) {
                 Box(
                     modifier = Modifier
-                        .size(34.dp)
-                        .clip(RoundedCornerShape(8.dp))
+                        .size(42.dp)
+                        .clip(RoundedCornerShape(10.dp))
                         .background(if (isConnected) BmwOptimalGreen.copy(alpha = 0.2f) else Color(0x1AFFFFFF)),
                     contentAlignment = Alignment.Center
                 ) {
@@ -650,7 +650,7 @@ private fun ObdAdapterCard(
                         imageVector = Icons.Default.Bluetooth,
                         contentDescription = null,
                         tint = if (isConnected) BmwOptimalGreen else TextPrimaryWhite,
-                        modifier = Modifier.size(18.dp)
+                        modifier = Modifier.size(22.dp)
                     )
                 }
 
@@ -660,7 +660,7 @@ private fun ObdAdapterCard(
                             text = device.name,
                             fontFamily = FontFamily.SansSerif,
                             fontWeight = FontWeight.Bold,
-                            fontSize = 12.sp,
+                            fontSize = 14.sp,
                             color = TextPrimaryWhite
                         )
                         Spacer(modifier = Modifier.width(6.dp))
@@ -668,22 +668,22 @@ private fun ObdAdapterCard(
                             modifier = Modifier
                                 .clip(RoundedCornerShape(4.dp))
                                 .background(Color(0x334CC2FF))
-                                .padding(horizontal = 4.dp, vertical = 1.dp)
+                                .padding(horizontal = 6.dp, vertical = 2.dp)
                         ) {
-                            Text(device.type.label, fontSize = 7.sp, color = BmwCyan, fontWeight = FontWeight.Bold)
+                            Text(device.type.label, fontSize = 9.sp, color = BmwCyan, fontWeight = FontWeight.Bold)
                         }
                     }
 
                     Text(
                         text = device.address,
                         fontFamily = FontFamily.Monospace,
-                        fontSize = 10.sp,
+                        fontSize = 11.sp,
                         color = TextSecondaryGrey
                     )
                     Text(
                         text = device.protocol,
                         fontFamily = FontFamily.SansSerif,
-                        fontSize = 9.sp,
+                        fontSize = 11.sp,
                         color = TextMuted
                     )
                 }
@@ -693,17 +693,17 @@ private fun ObdAdapterCard(
                 Button(
                     onClick = onDisconnect,
                     colors = ButtonDefaults.buttonColors(containerColor = BmwCrimson.copy(alpha = 0.25f)),
-                    shape = RoundedCornerShape(8.dp)
+                    shape = RoundedCornerShape(10.dp)
                 ) {
-                    Text("DISCONNECT", fontSize = 9.sp, color = BmwCrimson, fontWeight = FontWeight.Bold)
+                    Text("DISCONNECT", fontSize = 11.sp, color = BmwCrimson, fontWeight = FontWeight.Bold)
                 }
             } else {
                 Button(
                     onClick = onConnect,
                     colors = ButtonDefaults.buttonColors(containerColor = BmwCyan),
-                    shape = RoundedCornerShape(8.dp)
+                    shape = RoundedCornerShape(10.dp)
                 ) {
-                    Text("CONNECT", fontSize = 9.sp, color = TextDark, fontWeight = FontWeight.Bold)
+                    Text("CONNECT", fontSize = 11.sp, color = TextDark, fontWeight = FontWeight.Bold)
                 }
             }
         }

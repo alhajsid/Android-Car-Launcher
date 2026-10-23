@@ -221,19 +221,19 @@ fun HudMirrorScreen(
                         text = "$displayedSpeed",
                         fontFamily = FontFamily.SansSerif,
                         fontWeight = FontWeight.Black,
-                        fontSize = 140.sp,
-                        lineHeight = 140.sp,
+                        fontSize = 155.sp,
+                        lineHeight = 155.sp,
                         letterSpacing = (-6).sp,
                         color = Color.White
                     )
-                    Spacer(modifier = Modifier.width(8.dp))
+                    Spacer(modifier = Modifier.width(10.dp))
                     Text(
                         text = speedUnit.label,
                         fontFamily = FontFamily.SansSerif,
                         fontWeight = FontWeight.Bold,
-                        fontSize = 28.sp,
+                        fontSize = 32.sp,
                         color = BmwCyan,
-                        modifier = Modifier.padding(bottom = 20.dp)
+                        modifier = Modifier.padding(bottom = 22.dp)
                     )
                 }
 
@@ -246,24 +246,24 @@ fun HudMirrorScreen(
                     // Gear indicator
                     Box(
                         modifier = Modifier
-                            .clip(RoundedCornerShape(8.dp))
+                            .clip(RoundedCornerShape(10.dp))
                             .background(if (telemetry.isObdConnected) BmwCyan else Color(0x334CC2FF))
-                            .padding(horizontal = 14.dp, vertical = 6.dp)
+                            .padding(horizontal = 16.dp, vertical = 7.dp)
                     ) {
                         Text(
                             text = if (telemetry.isObdConnected) telemetry.currentGear else "-",
                             fontFamily = FontFamily.SansSerif,
                             fontWeight = FontWeight.Black,
-                            fontSize = 24.sp,
+                            fontSize = 28.sp,
                             color = if (telemetry.isObdConnected) TextDark else Color.White
                         )
                     }
 
-                    Spacer(modifier = Modifier.width(20.dp))
+                    Spacer(modifier = Modifier.width(22.dp))
 
                     // Minimal linear RPM track
                     val rpmRatio = if (telemetry.isObdConnected) (telemetry.rpm.toFloat() / telemetry.maxRpm).coerceIn(0f, 1f) else 0f
-                    Column(modifier = Modifier.width(200.dp)) {
+                    Column(modifier = Modifier.width(240.dp)) {
                         Row(
                             modifier = Modifier.fillMaxWidth(),
                             horizontalArrangement = Arrangement.SpaceBetween
@@ -272,7 +272,7 @@ fun HudMirrorScreen(
                                 text = if (telemetry.isObdConnected) "${telemetry.rpm} RPM" else "-- RPM",
                                 fontFamily = FontFamily.SansSerif,
                                 fontWeight = FontWeight.Bold,
-                                fontSize = 14.sp,
+                                fontSize = 16.sp,
                                 color = if (telemetry.isObdConnected) Color.White else Color(0xFF888888)
                             )
                             Text(

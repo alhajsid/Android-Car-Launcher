@@ -22,13 +22,13 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Cloud
 import androidx.compose.material.icons.filled.LocalGasStation
 import androidx.compose.material.icons.filled.MusicNote
-import androidx.compose.material.icons.filled.OpenInNew
 import androidx.compose.material.icons.filled.Pause
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Route
 import androidx.compose.material.icons.filled.SkipNext
 import androidx.compose.material.icons.filled.SkipPrevious
 import androidx.compose.material.icons.filled.WbSunny
+import androidx.compose.material.icons.automirrored.filled.OpenInNew
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.Text
@@ -63,6 +63,10 @@ import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
 
+import androidx.compose.foundation.Image
+import androidx.compose.ui.res.painterResource
+import com.example.R
+
 @Composable
 fun FuelAndMediaCard(
     telemetry: TelemetryData,
@@ -71,6 +75,8 @@ fun FuelAndMediaCard(
     onTogglePlayback: () -> Unit,
     onSkipNext: () -> Unit = {},
     onSkipPrevious: () -> Unit = {},
+    onLaunchCarPlay: () -> Unit = {},
+    onLaunchAndroidAuto: () -> Unit = {},
     modifier: Modifier = Modifier
 ) {
     val context = LocalContext.current
@@ -90,14 +96,14 @@ fun FuelAndMediaCard(
 
     Column(
         modifier = modifier
-            .clip(RoundedCornerShape(24.dp))
+            .clip(RoundedCornerShape(26.dp))
             .background(GlassCardFill)
-            .border(1.dp, GlassCardBorder, RoundedCornerShape(24.dp))
+            .border(1.5.dp, GlassCardBorder, RoundedCornerShape(26.dp))
             .padding(14.dp)
             .testTag("fuel_and_media_card"),
         verticalArrangement = Arrangement.spacedBy(10.dp)
     ) {
-        // Top: Clock, Date & Real Weather Glance
+        // Top: Large Digital Clock, Date & Real Weather Glance
         Row(
             modifier = Modifier.fillMaxWidth(),
             horizontalArrangement = Arrangement.SpaceBetween,
@@ -108,16 +114,16 @@ fun FuelAndMediaCard(
                     text = currentTimeString.ifEmpty { "17:07" },
                     fontFamily = FontFamily.SansSerif,
                     fontWeight = FontWeight.Black,
-                    fontSize = 32.sp,
-                    lineHeight = 34.sp,
-                    letterSpacing = (-1).sp,
+                    fontSize = 46.sp,
+                    lineHeight = 48.sp,
+                    letterSpacing = (-1.5).sp,
                     color = TextPrimaryWhite
                 )
                 Text(
                     text = currentDateString.ifEmpty { "COCKPIT" }.uppercase(),
                     fontFamily = FontFamily.SansSerif,
-                    fontWeight = FontWeight.SemiBold,
-                    fontSize = 10.sp,
+                    fontWeight = FontWeight.Bold,
+                    fontSize = 13.sp,
                     letterSpacing = 1.sp,
                     color = TextSecondaryGrey
                 )
@@ -126,7 +132,7 @@ fun FuelAndMediaCard(
             // Real Weather Glance (or Locating state if no GPS fix)
             Row(
                 verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(4.dp)
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
             ) {
                 if (telemetry.weatherTempC != null) {
                     Icon(
@@ -134,21 +140,21 @@ fun FuelAndMediaCard(
                             Icons.Default.Cloud else Icons.Default.WbSunny,
                         contentDescription = "Weather",
                         tint = BmwAmber,
-                        modifier = Modifier.size(24.dp)
+                        modifier = Modifier.size(30.dp)
                     )
                     Column(horizontalAlignment = Alignment.End) {
                         Text(
                             text = "${telemetry.weatherTempC}°",
                             fontFamily = FontFamily.SansSerif,
-                            fontWeight = FontWeight.Bold,
-                            fontSize = 20.sp,
+                            fontWeight = FontWeight.Black,
+                            fontSize = 26.sp,
                             color = TextPrimaryWhite
                         )
                         Text(
                             text = telemetry.weatherCondition ?: "Fair",
                             fontFamily = FontFamily.SansSerif,
-                            fontWeight = FontWeight.SemiBold,
-                            fontSize = 9.sp,
+                            fontWeight = FontWeight.Bold,
+                            fontSize = 12.sp,
                             color = TextSecondaryGrey
                         )
                     }
@@ -157,13 +163,13 @@ fun FuelAndMediaCard(
                         imageVector = Icons.Default.Cloud,
                         contentDescription = "Weather",
                         tint = TextMuted,
-                        modifier = Modifier.size(20.dp)
+                        modifier = Modifier.size(26.dp)
                     )
                     Text(
                         text = "--°",
                         fontFamily = FontFamily.SansSerif,
                         fontWeight = FontWeight.Bold,
-                        fontSize = 18.sp,
+                        fontSize = 24.sp,
                         color = TextMuted
                     )
                 }
@@ -177,10 +183,10 @@ fun FuelAndMediaCard(
         Box(
             modifier = Modifier
                 .fillMaxWidth()
-                .clip(RoundedCornerShape(14.dp))
-                .background(Color(0x9905070A))
-                .border(1.dp, Color(0x1AFFFFFF), RoundedCornerShape(14.dp))
-                .padding(10.dp)
+                .clip(RoundedCornerShape(16.dp))
+                .background(Color(0xE605070A))
+                .border(1.dp, Color(0x26FFFFFF), RoundedCornerShape(16.dp))
+                .padding(12.dp)
         ) {
             Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 // Top header: Fuel Level & Trip Distance
@@ -194,14 +200,14 @@ fun FuelAndMediaCard(
                             imageVector = Icons.Default.LocalGasStation,
                             contentDescription = "Fuel Level",
                             tint = if (hasFuel) accentColor else TextMuted,
-                            modifier = Modifier.size(16.dp)
+                            modifier = Modifier.size(22.dp)
                         )
-                        Spacer(modifier = Modifier.width(6.dp))
+                        Spacer(modifier = Modifier.width(8.dp))
                         Text(
                             text = "FUEL TANK",
                             fontFamily = FontFamily.SansSerif,
-                            fontWeight = FontWeight.Bold,
-                            fontSize = 11.sp,
+                            fontWeight = FontWeight.Black,
+                            fontSize = 14.sp,
                             letterSpacing = 0.5.sp,
                             color = TextPrimaryWhite
                         )
@@ -210,27 +216,27 @@ fun FuelAndMediaCard(
                     Text(
                         text = if (hasFuel) "${telemetry.fuelLevelPercent}%" else "--%",
                         fontFamily = FontFamily.SansSerif,
-                        fontWeight = FontWeight.Bold,
-                        fontSize = 13.sp,
+                        fontWeight = FontWeight.Black,
+                        fontSize = 20.sp,
                         color = if (hasFuel) TextPrimaryWhite else TextMuted
                     )
                 }
 
-                // Fuel Level Progress Bar
+                // Fuel Level Progress Bar (Thicker for head unit glance)
                 val progressFraction = if (hasFuel) (telemetry.fuelLevelPercent!! / 100f).coerceIn(0f, 1f) else 0f
                 Box(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .height(6.dp)
-                        .clip(RoundedCornerShape(3.dp))
+                        .height(10.dp)
+                        .clip(RoundedCornerShape(5.dp))
                         .background(Color(0x26FFFFFF))
                 ) {
                     if (hasFuel) {
                         Box(
                             modifier = Modifier
                                 .fillMaxWidth(progressFraction)
-                                .height(6.dp)
-                                .clip(RoundedCornerShape(3.dp))
+                                .height(10.dp)
+                                .clip(RoundedCornerShape(5.dp))
                                 .background(
                                     Brush.horizontalGradient(
                                         listOf(if (progressFraction < 0.15f) Color(0xFFFF3344) else accentColor, accentColor)
@@ -240,7 +246,7 @@ fun FuelAndMediaCard(
                     }
                 }
 
-                // Trip Stats: Instant Flow, Trip Distance, Elapsed Duration
+                // Trip Stats: Instant Flow, Trip Distance, Elapsed Duration (Extra readable)
                 Row(
                     modifier = Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.SpaceBetween
@@ -249,9 +255,9 @@ fun FuelAndMediaCard(
                         Text(
                             text = "INSTANT",
                             fontFamily = FontFamily.SansSerif,
-                            fontWeight = FontWeight.SemiBold,
-                            fontSize = 8.sp,
-                            color = TextMuted
+                            fontWeight = FontWeight.Bold,
+                            fontSize = 12.sp,
+                            color = TextSecondaryGrey
                         )
                         Text(
                             text = if (hasObd && telemetry.instantFuelL100km != null) {
@@ -260,8 +266,8 @@ fun FuelAndMediaCard(
                                 "-- L/100"
                             },
                             fontFamily = FontFamily.SansSerif,
-                            fontWeight = FontWeight.Bold,
-                            fontSize = 11.sp,
+                            fontWeight = FontWeight.Black,
+                            fontSize = 16.sp,
                             color = if (hasObd && telemetry.instantFuelL100km != null) TextPrimaryWhite else TextMuted
                         )
                     }
@@ -270,15 +276,15 @@ fun FuelAndMediaCard(
                         Text(
                             text = "TRIP DISTANCE",
                             fontFamily = FontFamily.SansSerif,
-                            fontWeight = FontWeight.SemiBold,
-                            fontSize = 8.sp,
-                            color = TextMuted
+                            fontWeight = FontWeight.Bold,
+                            fontSize = 12.sp,
+                            color = TextSecondaryGrey
                         )
                         Text(
                             text = "${telemetry.tripDistanceKm} km",
                             fontFamily = FontFamily.SansSerif,
-                            fontWeight = FontWeight.Bold,
-                            fontSize = 11.sp,
+                            fontWeight = FontWeight.Black,
+                            fontSize = 16.sp,
                             color = TextPrimaryWhite
                         )
                     }
@@ -287,17 +293,17 @@ fun FuelAndMediaCard(
                         Text(
                             text = "TRIP TIME",
                             fontFamily = FontFamily.SansSerif,
-                            fontWeight = FontWeight.SemiBold,
-                            fontSize = 8.sp,
-                            color = TextMuted
+                            fontWeight = FontWeight.Bold,
+                            fontSize = 12.sp,
+                            color = TextSecondaryGrey
                         )
                         val mins = telemetry.tripDurationSec / 60
                         val secs = telemetry.tripDurationSec % 60
                         Text(
                             text = "${mins}m ${secs}s",
                             fontFamily = FontFamily.SansSerif,
-                            fontWeight = FontWeight.Bold,
-                            fontSize = 11.sp,
+                            fontWeight = FontWeight.Black,
+                            fontSize = 16.sp,
                             color = TextPrimaryWhite
                         )
                     }
@@ -305,54 +311,128 @@ fun FuelAndMediaCard(
             }
         }
 
-        // Bottom: Real Media Player Card (No fake Kavinsky / 42%)
+        // Phone Projection Quick-Launch Row (Apple CarPlay & Android Auto)
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(8.dp)
+        ) {
+            // Apple CarPlay Shortcut Button
+            Box(
+                modifier = Modifier
+                    .weight(1f)
+                    .height(42.dp)
+                    .clip(RoundedCornerShape(12.dp))
+                    .background(Color(0x22FFFFFF))
+                    .border(1.dp, Color(0x40FFFFFF), RoundedCornerShape(12.dp))
+                    .clickable { onLaunchCarPlay() }
+                    .padding(horizontal = 8.dp)
+                    .testTag("home_shortcut_carplay"),
+                contentAlignment = Alignment.Center
+            ) {
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.Center
+                ) {
+                    Image(
+                        painter = painterResource(R.drawable.ic_carplay),
+                        contentDescription = "Apple CarPlay",
+                        modifier = Modifier.size(22.dp)
+                    )
+                    Spacer(modifier = Modifier.width(6.dp))
+                    Text(
+                        text = "CARPLAY",
+                        fontFamily = FontFamily.SansSerif,
+                        fontWeight = FontWeight.Bold,
+                        fontSize = 11.sp,
+                        letterSpacing = 0.5.sp,
+                        color = TextPrimaryWhite
+                    )
+                }
+            }
+
+            // Android Auto Shortcut Button
+            Box(
+                modifier = Modifier
+                    .weight(1f)
+                    .height(42.dp)
+                    .clip(RoundedCornerShape(12.dp))
+                    .background(Color(0x2200E5FF))
+                    .border(1.dp, BmwCyan.copy(alpha = 0.6f), RoundedCornerShape(12.dp))
+                    .clickable { onLaunchAndroidAuto() }
+                    .padding(horizontal = 8.dp)
+                    .testTag("home_shortcut_android_auto"),
+                contentAlignment = Alignment.Center
+            ) {
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.Center
+                ) {
+                    Image(
+                        painter = painterResource(R.drawable.ic_android_auto),
+                        contentDescription = "Android Auto",
+                        modifier = Modifier.size(22.dp)
+                    )
+                    Spacer(modifier = Modifier.width(6.dp))
+                    Text(
+                        text = "ANDROID AUTO",
+                        fontFamily = FontFamily.SansSerif,
+                        fontWeight = FontWeight.Bold,
+                        fontSize = 11.sp,
+                        letterSpacing = 0.5.sp,
+                        color = BmwCyan
+                    )
+                }
+            }
+        }
+
+        // Bottom: Real Media Player Card (Enlarged with massive tap targets)
         Box(
             modifier = Modifier
                 .fillMaxWidth()
-                .clip(RoundedCornerShape(14.dp))
-                .background(Color(0x9905070A))
-                .border(1.dp, Color(0x1AFFFFFF), RoundedCornerShape(14.dp))
-                .padding(10.dp)
+                .clip(RoundedCornerShape(16.dp))
+                .background(Color(0xE605070A))
+                .border(1.dp, Color(0x26FFFFFF), RoundedCornerShape(16.dp))
+                .padding(12.dp)
         ) {
             if (telemetry.hasRealMediaSession && !telemetry.songTitle.isNullOrBlank()) {
                 // Real Live Playing Media
-                Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                     Row(
                         modifier = Modifier.fillMaxWidth(),
                         verticalAlignment = Alignment.CenterVertically
                     ) {
                         Box(
                             modifier = Modifier
-                                .size(36.dp)
-                                .clip(RoundedCornerShape(8.dp))
-                                .background(accentColor.copy(alpha = 0.2f))
-                                .border(1.dp, accentColor.copy(alpha = 0.5f), RoundedCornerShape(8.dp)),
+                                .size(48.dp)
+                                .clip(RoundedCornerShape(12.dp))
+                                .background(accentColor.copy(alpha = 0.25f))
+                                .border(1.5.dp, accentColor.copy(alpha = 0.6f), RoundedCornerShape(12.dp)),
                             contentAlignment = Alignment.Center
                         ) {
                             Icon(
                                 imageVector = Icons.Default.MusicNote,
                                 contentDescription = null,
                                 tint = accentColor,
-                                modifier = Modifier.size(18.dp)
+                                modifier = Modifier.size(26.dp)
                             )
                         }
 
-                        Spacer(modifier = Modifier.width(10.dp))
+                        Spacer(modifier = Modifier.width(12.dp))
 
                         Column(modifier = Modifier.weight(1f)) {
                             Text(
                                 text = telemetry.songTitle ?: "Audio Track",
                                 fontFamily = FontFamily.SansSerif,
-                                fontWeight = FontWeight.Bold,
-                                fontSize = 12.sp,
+                                fontWeight = FontWeight.Black,
+                                fontSize = 16.sp,
                                 color = TextPrimaryWhite,
                                 maxLines = 1
                             )
                             Text(
                                 text = telemetry.songArtist ?: "Now Playing",
                                 fontFamily = FontFamily.SansSerif,
-                                fontWeight = FontWeight.Normal,
-                                fontSize = 10.sp,
+                                fontWeight = FontWeight.Bold,
+                                fontSize = 13.sp,
                                 color = TextSecondaryGrey,
                                 maxLines = 1
                             )
@@ -363,20 +443,20 @@ fun FuelAndMediaCard(
                     Box(
                         modifier = Modifier
                             .fillMaxWidth()
-                            .height(3.dp)
-                            .clip(RoundedCornerShape(1.5.dp))
-                            .background(Color(0x22FFFFFF))
+                            .height(6.dp)
+                            .clip(RoundedCornerShape(3.dp))
+                            .background(Color(0x33FFFFFF))
                     ) {
                         Box(
                             modifier = Modifier
                                 .fillMaxWidth(telemetry.mediaProgress)
-                                .height(3.dp)
-                                .clip(RoundedCornerShape(1.5.dp))
+                                .height(6.dp)
+                                .clip(RoundedCornerShape(3.dp))
                                 .background(accentColor)
                         )
                     }
 
-                    // Real Transport Controls
+                    // Real Transport Controls (Big, easy to hit while driving)
                     Row(
                         modifier = Modifier.fillMaxWidth(),
                         horizontalArrangement = Arrangement.Center,
@@ -384,21 +464,21 @@ fun FuelAndMediaCard(
                     ) {
                         IconButton(
                             onClick = onSkipPrevious,
-                            modifier = Modifier.size(30.dp)
+                            modifier = Modifier.size(48.dp)
                         ) {
                             Icon(
                                 imageVector = Icons.Default.SkipPrevious,
                                 contentDescription = "Previous",
                                 tint = TextPrimaryWhite,
-                                modifier = Modifier.size(16.dp)
+                                modifier = Modifier.size(28.dp)
                             )
                         }
 
-                        Spacer(modifier = Modifier.width(10.dp))
+                        Spacer(modifier = Modifier.width(16.dp))
 
                         Box(
                             modifier = Modifier
-                                .size(28.dp)
+                                .size(56.dp)
                                 .clip(CircleShape)
                                 .background(accentColor)
                                 .clickable { onTogglePlayback() },
@@ -408,21 +488,21 @@ fun FuelAndMediaCard(
                                 imageVector = if (telemetry.isMediaPlaying) Icons.Default.Pause else Icons.Default.PlayArrow,
                                 contentDescription = if (telemetry.isMediaPlaying) "Pause" else "Play",
                                 tint = if (accentColor == BmwCyan) TextDark else TextPrimaryWhite,
-                                modifier = Modifier.size(16.dp)
+                                modifier = Modifier.size(30.dp)
                             )
                         }
 
-                        Spacer(modifier = Modifier.width(10.dp))
+                        Spacer(modifier = Modifier.width(16.dp))
 
                         IconButton(
                             onClick = onSkipNext,
-                            modifier = Modifier.size(30.dp)
+                            modifier = Modifier.size(48.dp)
                         ) {
                             Icon(
                                 imageVector = Icons.Default.SkipNext,
                                 contentDescription = "Next",
                                 tint = TextPrimaryWhite,
-                                modifier = Modifier.size(16.dp)
+                                modifier = Modifier.size(28.dp)
                             )
                         }
                     }
@@ -440,31 +520,32 @@ fun FuelAndMediaCard(
                     ) {
                         Box(
                             modifier = Modifier
-                                .size(32.dp)
-                                .clip(RoundedCornerShape(8.dp))
-                                .background(Color(0x1AFFFFFF)),
+                                .size(44.dp)
+                                .clip(RoundedCornerShape(10.dp))
+                                .background(Color(0x22FFFFFF)),
                             contentAlignment = Alignment.Center
                         ) {
                             Icon(
                                 imageVector = Icons.Default.MusicNote,
                                 contentDescription = null,
-                                tint = TextMuted,
-                                modifier = Modifier.size(16.dp)
+                                tint = TextSecondaryGrey,
+                                modifier = Modifier.size(24.dp)
                             )
                         }
-                        Spacer(modifier = Modifier.width(10.dp))
+                        Spacer(modifier = Modifier.width(12.dp))
                         Column {
                             Text(
                                 text = "NO MEDIA PLAYING",
                                 fontFamily = FontFamily.SansSerif,
-                                fontWeight = FontWeight.Bold,
-                                fontSize = 11.sp,
-                                color = TextSecondaryGrey
+                                fontWeight = FontWeight.Black,
+                                fontSize = 14.sp,
+                                color = TextPrimaryWhite
                             )
                             Text(
                                 text = "Play audio on Spotify/YouTube Music",
-                                fontSize = 9.sp,
-                                color = TextMuted
+                                fontSize = 12.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = TextSecondaryGrey
                             )
                         }
                     }
@@ -472,8 +553,8 @@ fun FuelAndMediaCard(
                     // Button to open Notification Listener Settings
                     Box(
                         modifier = Modifier
-                            .clip(RoundedCornerShape(8.dp))
-                            .background(Color(0x22FFFFFF))
+                            .clip(RoundedCornerShape(10.dp))
+                            .background(Color(0x33FFFFFF))
                             .clickable {
                                 try {
                                     val intent = Intent(Settings.ACTION_NOTIFICATION_LISTENER_SETTINGS).apply {
@@ -482,22 +563,22 @@ fun FuelAndMediaCard(
                                     context.startActivity(intent)
                                 } catch (_: Exception) {}
                             }
-                            .padding(horizontal = 8.dp, vertical = 4.dp)
+                            .padding(horizontal = 12.dp, vertical = 8.dp)
                     ) {
                         Row(verticalAlignment = Alignment.CenterVertically) {
                             Text(
                                 text = "SYNC PERMISSION",
                                 fontFamily = FontFamily.SansSerif,
-                                fontWeight = FontWeight.Bold,
-                                fontSize = 8.sp,
+                                fontWeight = FontWeight.Black,
+                                fontSize = 12.sp,
                                 color = BmwCyan
                             )
-                            Spacer(modifier = Modifier.width(3.dp))
+                            Spacer(modifier = Modifier.width(4.dp))
                             Icon(
-                                imageVector = Icons.Default.OpenInNew,
+                                imageVector = Icons.AutoMirrored.Filled.OpenInNew,
                                 contentDescription = null,
                                 tint = BmwCyan,
-                                modifier = Modifier.size(10.dp)
+                                modifier = Modifier.size(16.dp)
                             )
                         }
                     }

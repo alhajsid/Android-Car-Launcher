@@ -11,6 +11,7 @@ import androidx.datastore.preferences.core.stringPreferencesKey
 import androidx.datastore.preferences.core.stringSetPreferencesKey
 import androidx.datastore.preferences.preferencesDataStore
 import com.example.model.DisplayBrightnessMode
+import com.example.model.HeadUnitScale
 import com.example.model.SpeedUnit
 import com.example.model.TempUnit
 import com.example.model.UserSettings
@@ -29,6 +30,7 @@ class SettingsDataStore(private val context: Context) {
         val TEMP_UNIT = stringPreferencesKey("temp_unit")
         val IS_HUD_MIRRORED = booleanPreferencesKey("is_hud_mirrored")
         val BRIGHTNESS_MODE = stringPreferencesKey("brightness_mode")
+        val HEAD_UNIT_SCALE = stringPreferencesKey("head_unit_scale")
         val REDLINE_RPM = intPreferencesKey("redline_rpm")
         val COOLANT_THRESHOLD = intPreferencesKey("coolant_threshold")
         val SPEED_LIMIT_ALERT = intPreferencesKey("speed_limit_alert")
@@ -62,6 +64,10 @@ class SettingsDataStore(private val context: Context) {
                 DisplayBrightnessMode.valueOf(prefs[PreferencesKeys.BRIGHTNESS_MODE] ?: DisplayBrightnessMode.NIGHT_OLED.name)
             } catch (_: Exception) { DisplayBrightnessMode.NIGHT_OLED }
 
+            val headUnitScale = try {
+                HeadUnitScale.valueOf(prefs[PreferencesKeys.HEAD_UNIT_SCALE] ?: HeadUnitScale.LARGE.name)
+            } catch (_: Exception) { HeadUnitScale.LARGE }
+
             val themeAccent = try {
                 ThemeAccent.valueOf(prefs[PreferencesKeys.THEME_ACCENT] ?: ThemeAccent.I_BLUE.name)
             } catch (_: Exception) { ThemeAccent.I_BLUE }
@@ -73,6 +79,7 @@ class SettingsDataStore(private val context: Context) {
                 tempUnit = tempUnit,
                 isHudMirrored = prefs[PreferencesKeys.IS_HUD_MIRRORED] ?: false,
                 brightnessMode = brightnessMode,
+                headUnitScale = headUnitScale,
                 redlineRpm = prefs[PreferencesKeys.REDLINE_RPM] ?: 7000,
                 coolantAlertThreshold = prefs[PreferencesKeys.COOLANT_THRESHOLD] ?: 105,
                 speedLimitAlertKmh = prefs[PreferencesKeys.SPEED_LIMIT_ALERT] ?: 0,
@@ -92,6 +99,7 @@ class SettingsDataStore(private val context: Context) {
             prefs[PreferencesKeys.TEMP_UNIT] = settings.tempUnit.name
             prefs[PreferencesKeys.IS_HUD_MIRRORED] = settings.isHudMirrored
             prefs[PreferencesKeys.BRIGHTNESS_MODE] = settings.brightnessMode.name
+            prefs[PreferencesKeys.HEAD_UNIT_SCALE] = settings.headUnitScale.name
             prefs[PreferencesKeys.REDLINE_RPM] = settings.redlineRpm
             prefs[PreferencesKeys.COOLANT_THRESHOLD] = settings.coolantAlertThreshold
             prefs[PreferencesKeys.SPEED_LIMIT_ALERT] = settings.speedLimitAlertKmh

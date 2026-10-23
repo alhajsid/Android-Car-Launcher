@@ -5,6 +5,11 @@ import androidx.compose.material3.darkColorScheme
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.graphics.Color
 
+import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.runtime.remember
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.unit.Density
+
 private val CockpitDarkColorScheme = darkColorScheme(
     primary = BmwCyan,
     onPrimary = TextDark,
@@ -29,6 +34,7 @@ private val CockpitDarkColorScheme = darkColorScheme(
 @Composable
 fun VisionHudTheme(
     accentColor: Color = BmwCyan,
+    scaleFactor: Float = 1.0f,
     content: @Composable () -> Unit
 ) {
     val dynamicScheme = CockpitDarkColorScheme.copy(
@@ -36,9 +42,19 @@ fun VisionHudTheme(
         outlineVariant = accentColor.copy(alpha = 0.25f)
     )
 
-    MaterialTheme(
-        colorScheme = dynamicScheme,
-        typography = Typography,
-        content = content
-    )
+    val currentDensity = LocalDensity.current
+    val effectiveDensity = remember(currentDensity, scaleFactor) {
+        Density(
+            density = currentDensity.density * scaleFactor,
+            fontScale = currentDensity.fontScale
+        )
+    }
+
+    CompositionLocalProvider(LocalDensity provides effectiveDensity) {
+        MaterialTheme(
+            colorScheme = dynamicScheme,
+            typography = Typography,
+            content = content
+        )
+    }
 }

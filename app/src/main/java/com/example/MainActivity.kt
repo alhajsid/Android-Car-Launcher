@@ -43,6 +43,8 @@ import com.example.data.AppsRepository
 import com.example.data.TelemetryRepository
 import com.example.model.DisplayBrightnessMode
 import com.example.model.DriveMode
+import com.example.ui.components.PhoneProjectionDialog
+import com.example.ui.components.ProjectionType
 import com.example.ui.screens.AllAppsScreen
 import com.example.ui.screens.HudMirrorScreen
 import com.example.ui.screens.MainDashboardScreen
@@ -90,6 +92,7 @@ class MainActivity : ComponentActivity(), SensorEventListener {
             val installedApps by appsRepository.installedApps.collectAsState()
 
             var currentScreen by remember { mutableStateOf(CockpitScreen.DASHBOARD) }
+            var activeProjectionDialog by remember { mutableStateOf<ProjectionType?>(null) }
             val snackbarHostState = remember { SnackbarHostState() }
             val scope = rememberCoroutineScope()
 
@@ -116,6 +119,7 @@ class MainActivity : ComponentActivity(), SensorEventListener {
                 } else true
 
                 if (btGranted) {
+                    telemetryRepository.startObdServiceIfPermitted()
                     telemetryRepository.realObdManager.refreshDevices()
                     telemetryRepository.realObdManager.autoConnectIfAvailable()
                 }
@@ -173,7 +177,10 @@ class MainActivity : ComponentActivity(), SensorEventListener {
                 }
             }
 
-            VisionHudTheme(accentColor = settings.themeAccent.primary) {
+            VisionHudTheme(
+                accentColor = settings.themeAccent.primary,
+                scaleFactor = settings.headUnitScale.scaleFactor
+            ) {
                 Scaffold(
                     modifier = Modifier.fillMaxSize(),
                     snackbarHost = { SnackbarHost(snackbarHostState) }
@@ -240,6 +247,18 @@ class MainActivity : ComponentActivity(), SensorEventListener {
                                                     scope.launch { snackbarHostState.showSnackbar("Dialer unavailable") }
                                                 }
                                             }
+                                            "carplay" -> {
+                                                val launched = appsRepository.launchCarPlay()
+                                                if (!launched) {
+                                                    activeProjectionDialog = ProjectionType.CARPLAY
+                                                }
+                                            }
+                                            "android_auto" -> {
+                                                val launched = appsRepository.launchAndroidAuto()
+                                                if (!launched) {
+                                                    activeProjectionDialog = ProjectionType.ANDROID_AUTO
+                                                }
+                                            }
                                         }
                                     },
                                     onOpenObdScreen = {
@@ -262,7 +281,15 @@ class MainActivity : ComponentActivity(), SensorEventListener {
                                     apps = if (installedApps.isNotEmpty()) installedApps else appsRepository.getInstalledApps(),
                                     isDefaultLauncher = isDefaultLauncher,
                                     onLaunchApp = { pkg ->
-                                        appsRepository.launchApp(pkg)
+                                        if (pkg == "com.zjinnova.zlink5" || pkg == "carplay" || pkg.contains("zlink")) {
+                                            val launched = appsRepository.launchCarPlay()
+                                            if (!launched) activeProjectionDialog = ProjectionType.CARPLAY
+                                        } else if (pkg == "com.google.android.projection.gearhead" || pkg == "android_auto") {
+                                            val launched = appsRepository.launchAndroidAuto()
+                                            if (!launched) activeProjectionDialog = ProjectionType.ANDROID_AUTO
+                                        } else {
+                                            appsRepository.launchApp(pkg)
+                                        }
                                     },
                                     onToggleFavorite = { pkg ->
                                         telemetryRepository.updateSettings { current ->
@@ -365,6 +392,40 @@ class MainActivity : ComponentActivity(), SensorEventListener {
                                 )
                             }
                         }
+                    }
+
+                    // Dialog helper for Apple CarPlay and Android Auto on car head units
+                    activeProjectionDialog?.let { type ->
+                        PhoneProjectionDialog(
+                            type = type,
+                            onDismiss = { activeProjectionDialog = null },
+                            onOpenBluetooth = {
+                                try {
+                                    val intent = Intent(android.provider.Settings.ACTION_BLUETOOTH_SETTINGS).apply {
+                                        flags = Intent.FLAG_ACTIVITY_NEW_TASK
+                                    }
+                                    startActivity(intent)
+                                } catch (_: Exception) {}
+                                activeProjectionDialog = null
+                            },
+                            onOpenPlayStore = {
+                                val pkg = if (type == ProjectionType.CARPLAY) "cn.manstep.phonemirrorBox" else "com.google.android.projection.gearhead"
+                                try {
+                                    val playIntent = Intent(Intent.ACTION_VIEW, Uri.parse("market://details?id=$pkg")).apply {
+                                        flags = Intent.FLAG_ACTIVITY_NEW_TASK
+                                    }
+                                    startActivity(playIntent)
+                                } catch (_: Exception) {
+                                    try {
+                                        val webIntent = Intent(Intent.ACTION_VIEW, Uri.parse("https://play.google.com/store/apps/details?id=$pkg")).apply {
+                                            flags = Intent.FLAG_ACTIVITY_NEW_TASK
+                                        }
+                                        startActivity(webIntent)
+                                    } catch (_: Exception) {}
+                                }
+                                activeProjectionDialog = null
+                            }
+                        )
                     }
                 }
             }

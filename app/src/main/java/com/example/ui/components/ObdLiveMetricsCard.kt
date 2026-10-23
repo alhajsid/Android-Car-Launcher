@@ -83,18 +83,18 @@ fun ObdLiveMetricsCard(
 
     Column(
         modifier = modifier
-            .clip(RoundedCornerShape(24.dp))
+            .clip(RoundedCornerShape(26.dp))
             .background(GlassCardFill)
             .border(
-                width = if (isOverheating) 2.dp else 1.dp,
+                width = if (isOverheating) 2.5.dp else 1.5.dp,
                 color = cardBorderColor,
-                shape = RoundedCornerShape(24.dp)
+                shape = RoundedCornerShape(26.dp)
             )
             .padding(14.dp)
             .testTag("obd_live_metrics_card"),
         verticalArrangement = Arrangement.spacedBy(10.dp)
     ) {
-        // Card Header
+        // Card Header (Prominent)
         Row(
             modifier = Modifier.fillMaxWidth(),
             horizontalArrangement = Arrangement.SpaceBetween,
@@ -104,15 +104,15 @@ fun ObdLiveMetricsCard(
                 Icon(
                     imageVector = Icons.Default.Tune,
                     contentDescription = null,
-                    tint = TextSecondaryGrey,
-                    modifier = Modifier.size(16.dp)
+                    tint = TextPrimaryWhite,
+                    modifier = Modifier.size(22.dp)
                 )
-                Spacer(modifier = Modifier.width(6.dp))
+                Spacer(modifier = Modifier.width(8.dp))
                 Text(
                     text = "OBD2 LIVE METRICS",
                     fontFamily = FontFamily.SansSerif,
-                    fontWeight = FontWeight.Bold,
-                    fontSize = 11.sp,
+                    fontWeight = FontWeight.Black,
+                    fontSize = 15.sp,
                     letterSpacing = 1.sp,
                     color = TextPrimaryWhite
                 )
@@ -120,9 +120,9 @@ fun ObdLiveMetricsCard(
             Text(
                 text = if (isConnected) telemetry.obdProtocol else "DISCONNECTED",
                 fontFamily = FontFamily.SansSerif,
-                fontWeight = FontWeight.SemiBold,
-                fontSize = 9.sp,
-                color = if (isConnected) TextMuted else BmwCrimson
+                fontWeight = FontWeight.Bold,
+                fontSize = 12.sp,
+                color = if (isConnected) TextSecondaryGrey else BmwCrimson
             )
         }
 
@@ -131,34 +131,34 @@ fun ObdLiveMetricsCard(
             Box(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .clip(RoundedCornerShape(8.dp))
-                    .background(BmwCrimson.copy(alpha = 0.25f))
-                    .border(1.dp, BmwCrimson, RoundedCornerShape(8.dp))
-                    .padding(horizontal = 10.dp, vertical = 6.dp)
+                    .clip(RoundedCornerShape(10.dp))
+                    .background(BmwCrimson.copy(alpha = 0.3f))
+                    .border(1.5.dp, BmwCrimson, RoundedCornerShape(10.dp))
+                    .padding(horizontal = 12.dp, vertical = 8.dp)
             ) {
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Icon(
                         imageVector = Icons.Default.Warning,
                         contentDescription = "Warning",
                         tint = BmwCrimson,
-                        modifier = Modifier.size(18.dp)
+                        modifier = Modifier.size(22.dp)
                     )
-                    Spacer(modifier = Modifier.width(6.dp))
+                    Spacer(modifier = Modifier.width(8.dp))
                     Text(
                         text = "CRITICAL: ENGINE COOLANT OVERHEAT",
                         fontFamily = FontFamily.SansSerif,
-                        fontWeight = FontWeight.Bold,
-                        fontSize = 10.sp,
+                        fontWeight = FontWeight.Black,
+                        fontSize = 13.sp,
                         color = BmwCrimson
                     )
                 }
             }
         }
 
-        // Grid Row 1: Coolant ECT & Calculated Engine Load
+        // Grid Row 1: Coolant ECT & Calculated Engine Load (Larger, readable while driving)
         Row(
             modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.spacedBy(8.dp)
+            horizontalArrangement = Arrangement.spacedBy(10.dp)
         ) {
             // Engine Coolant Temp
             val ectDisplay = if (tempUnit == TempUnit.FAHRENHEIT) {
@@ -193,7 +193,7 @@ fun ObdLiveMetricsCard(
                 iconTint = Color(0xFFFF7700),
                 title = "ENG LOAD",
                 value = if (isConnected) "${telemetry.engLoadPercent}%" else "--",
-                status = if (isConnected) "CALCULATED" else "--",
+                status = if (isConnected) "LOAD" else "--",
                 statusColor = TextSecondaryGrey,
                 barProgress = if (isConnected) (telemetry.engLoadPercent / 100f).coerceIn(0f, 1f) else 0f,
                 barColor = Color(0xFFFF7700)
@@ -203,7 +203,7 @@ fun ObdLiveMetricsCard(
         // Grid Row 2: Intake Air Temp (IAT) & Throttle Position (TPS)
         Row(
             modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.spacedBy(8.dp)
+            horizontalArrangement = Arrangement.spacedBy(10.dp)
         ) {
             val iatDisplay = if (tempUnit == TempUnit.FAHRENHEIT) {
                 "${(telemetry.intakeAirTemp * 9 / 5) + 32}°F"
@@ -240,10 +240,10 @@ fun ObdLiveMetricsCard(
         Box(
             modifier = Modifier
                 .fillMaxWidth()
-                .clip(RoundedCornerShape(12.dp))
-                .background(Color(0x8005070A))
-                .border(1.dp, Color(0x1AFFFFFF), RoundedCornerShape(12.dp))
-                .padding(horizontal = 10.dp, vertical = 7.dp)
+                .clip(RoundedCornerShape(14.dp))
+                .background(Color(0x9905070A))
+                .border(1.dp, Color(0x26FFFFFF), RoundedCornerShape(14.dp))
+                .padding(horizontal = 14.dp, vertical = 8.dp)
         ) {
             Row(
                 modifier = Modifier.fillMaxWidth(),
@@ -255,89 +255,76 @@ fun ObdLiveMetricsCard(
                     Icon(
                         imageVector = Icons.Default.Compress,
                         contentDescription = null,
-                        tint = BmwCrimson,
-                        modifier = Modifier.size(16.dp)
+                        tint = BmwCyan,
+                        modifier = Modifier.size(22.dp)
                     )
-                    Spacer(modifier = Modifier.width(6.dp))
+                    Spacer(modifier = Modifier.width(8.dp))
                     Column {
+                        Text("BOOST", fontSize = 12.sp, fontWeight = FontWeight.Bold, color = TextSecondaryGrey)
                         Text(
-                            text = "TURBO BOOST",
-                            fontFamily = FontFamily.SansSerif,
-                            fontWeight = FontWeight.SemiBold,
-                            fontSize = 9.sp,
-                            color = TextMuted
-                        )
-                        Text(
-                            text = if (isConnected) "+${String.format("%.2f", telemetry.turboBoostBar)} BAR" else "-- BAR",
-                            fontFamily = FontFamily.SansSerif,
-                            fontWeight = FontWeight.Bold,
-                            fontSize = 12.sp,
-                            color = TextPrimaryWhite
+                            text = if (isConnected) "${telemetry.turboBoostBar} bar" else "-- bar",
+                            fontSize = 18.sp,
+                            fontWeight = FontWeight.Black,
+                            color = if (isConnected) TextPrimaryWhite else TextMuted
                         )
                     }
                 }
 
                 Box(
                     modifier = Modifier
-                        .height(24.dp)
+                        .height(28.dp)
                         .width(1.dp)
                         .background(Color(0x22FFFFFF))
                 )
 
-                // MAF Flow
+                // MAF Air Flow
                 Row(verticalAlignment = Alignment.CenterVertically) {
-                    Column(horizontalAlignment = Alignment.End) {
-                        Text(
-                            text = "MAF FLOW",
-                            fontFamily = FontFamily.SansSerif,
-                            fontWeight = FontWeight.SemiBold,
-                            fontSize = 9.sp,
-                            color = TextMuted
-                        )
-                        Text(
-                            text = if (isConnected) "${String.format("%.1f", telemetry.mafFlowGs)} G/S" else "-- G/S",
-                            fontFamily = FontFamily.SansSerif,
-                            fontWeight = FontWeight.Bold,
-                            fontSize = 12.sp,
-                            color = TextPrimaryWhite
-                        )
-                    }
-                    Spacer(modifier = Modifier.width(6.dp))
                     Icon(
                         imageVector = Icons.Default.Waves,
                         contentDescription = null,
-                        tint = BmwOptimalGreen,
-                        modifier = Modifier.size(16.dp)
+                        tint = Color(0xFFFF9900),
+                        modifier = Modifier.size(22.dp)
                     )
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Column {
+                        Text("MAF FLOW", fontSize = 12.sp, fontWeight = FontWeight.Bold, color = TextSecondaryGrey)
+                        Text(
+                            text = if (isConnected) "${telemetry.mafFlowGs.toInt()} g/s" else "-- g/s",
+                            fontSize = 18.sp,
+                            fontWeight = FontWeight.Black,
+                            color = if (isConnected) TextPrimaryWhite else TextMuted
+                        )
+                    }
                 }
             }
         }
 
-        // Drive Mode Selector Buttons
+        // Row 4: Drive Mode Selector Pills (Roomy touch targets for bumpy road driving)
         Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .clip(RoundedCornerShape(8.dp))
-                .background(Color(0x8005070A))
-                .padding(3.dp),
+                .clip(RoundedCornerShape(16.dp))
+                .background(Color(0xE605070A))
+                .border(1.dp, Color(0x22FFFFFF), RoundedCornerShape(16.dp))
+                .padding(4.dp),
             horizontalArrangement = Arrangement.spacedBy(4.dp)
         ) {
             DriveMode.values().forEach { mode ->
-                val isSelected = (mode == telemetry.driveMode)
+                val isSelected = (telemetry.driveMode == mode)
                 Box(
                     modifier = Modifier
                         .weight(1f)
-                        .clip(RoundedCornerShape(6.dp))
+                        .clip(RoundedCornerShape(12.dp))
                         .background(if (isSelected) mode.primaryColor else Color.Transparent)
                         .clickable { onSelectDriveMode(mode) }
-                        .padding(vertical = 7.dp),
+                        .padding(vertical = 12.dp),
                     contentAlignment = Alignment.Center
                 ) {
                     Text(
                         text = mode.title,
                         fontFamily = FontFamily.SansSerif,
-                        fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Medium,
-                        fontSize = 11.sp,
+                        fontWeight = if (isSelected) FontWeight.Black else FontWeight.Bold,
+                        fontSize = 14.sp,
                         letterSpacing = 0.5.sp,
                         color = if (isSelected) {
                             if (mode == DriveMode.COMFORT) Color(0xFF05070A) else TextPrimaryWhite
@@ -354,17 +341,18 @@ fun ObdLiveMetricsCard(
             Box(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .clip(RoundedCornerShape(8.dp))
+                    .clip(RoundedCornerShape(12.dp))
                     .background(Color(0x33FFB000))
+                    .border(1.dp, Color(0x66FFB000), RoundedCornerShape(12.dp))
                     .clickable { onOpenObdScreen() }
-                    .padding(vertical = 5.dp, horizontal = 8.dp),
+                    .padding(vertical = 8.dp, horizontal = 12.dp),
                 contentAlignment = Alignment.Center
             ) {
                 Text(
                     text = "Tap to Connect ELM327 OBD-II Adapter",
                     fontFamily = FontFamily.SansSerif,
-                    fontWeight = FontWeight.SemiBold,
-                    fontSize = 10.sp,
+                    fontWeight = FontWeight.Bold,
+                    fontSize = 13.sp,
                     color = BmwAmber
                 )
             }
@@ -386,10 +374,10 @@ private fun MetricBox(
 ) {
     Column(
         modifier = modifier
-            .clip(RoundedCornerShape(12.dp))
+            .clip(RoundedCornerShape(14.dp))
             .background(Color(0x9905070A))
-            .border(1.dp, Color(0x1AFFFFFF), RoundedCornerShape(12.dp))
-            .padding(9.dp)
+            .border(1.dp, Color(0x22FFFFFF), RoundedCornerShape(14.dp))
+            .padding(10.dp)
     ) {
         Row(
             modifier = Modifier.fillMaxWidth(),
@@ -400,18 +388,37 @@ private fun MetricBox(
                 imageVector = icon,
                 contentDescription = null,
                 tint = iconTint,
-                modifier = Modifier.size(17.dp)
+                modifier = Modifier.size(24.dp)
             )
             Text(
                 text = value,
                 fontFamily = FontFamily.SansSerif,
-                fontWeight = FontWeight.Bold,
-                fontSize = 16.sp,
+                fontWeight = FontWeight.Black,
+                fontSize = 22.sp,
                 color = TextPrimaryWhite
             )
         }
 
-        Spacer(modifier = Modifier.height(4.dp))
+        Spacer(modifier = Modifier.height(5.dp))
+
+        // Progress Vector
+        Box(
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(7.dp)
+                .clip(RoundedCornerShape(3.5.dp))
+                .background(Color(0x22FFFFFF))
+        ) {
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth(barProgress)
+                    .height(7.dp)
+                    .clip(RoundedCornerShape(3.5.dp))
+                    .background(barColor)
+            )
+        }
+
+        Spacer(modifier = Modifier.height(5.dp))
 
         Row(
             modifier = Modifier.fillMaxWidth(),
@@ -420,35 +427,17 @@ private fun MetricBox(
             Text(
                 text = title,
                 fontFamily = FontFamily.SansSerif,
-                fontWeight = FontWeight.SemiBold,
-                fontSize = 9.sp,
-                color = TextMuted
+                fontWeight = FontWeight.Bold,
+                fontSize = 12.sp,
+                letterSpacing = 0.5.sp,
+                color = TextSecondaryGrey
             )
             Text(
                 text = status,
                 fontFamily = FontFamily.SansSerif,
                 fontWeight = FontWeight.Bold,
-                fontSize = 9.sp,
+                fontSize = 12.sp,
                 color = statusColor
-            )
-        }
-
-        Spacer(modifier = Modifier.height(5.dp))
-
-        // Progress line
-        Box(
-            modifier = Modifier
-                .fillMaxWidth()
-                .height(3.dp)
-                .clip(RoundedCornerShape(1.5.dp))
-                .background(Color(0x22FFFFFF))
-        ) {
-            Box(
-                modifier = Modifier
-                    .fillMaxWidth(barProgress)
-                    .height(3.dp)
-                    .clip(RoundedCornerShape(1.5.dp))
-                    .background(barColor)
             )
         }
     }

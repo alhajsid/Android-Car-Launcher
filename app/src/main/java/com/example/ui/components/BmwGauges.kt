@@ -11,8 +11,10 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -72,7 +74,7 @@ fun BmwCenterHeroGauge(
         horizontalAlignment = Alignment.CenterHorizontally,
         verticalArrangement = Arrangement.Center
     ) {
-        // 1. Shift Lights LED Strip
+        // 1. Shift Lights LED Strip (Extra prominent for in-car peripheral vision)
         ShiftLightBar(
             rpm = currentRpm,
             redline = telemetry.redlineRpm,
@@ -82,25 +84,27 @@ fun BmwCenterHeroGauge(
 
         Spacer(modifier = Modifier.height(6.dp))
 
-        // 2. Polygonal Blades Gauge + Focal Speedometer Container
+        // 2. Polygonal Blades Gauge + Focal Speedometer Container (Responsive to head unit display height)
         Box(
             modifier = Modifier
-                .size(width = 380.dp, height = 310.dp),
+                .fillMaxWidth()
+                .weight(1f, fill = false),
             contentAlignment = Alignment.Center
         ) {
             // Automotive Dual Polygonal Blade Geometry Canvas
             BladeGaugeCanvas(
                 rpmFraction = rpmFraction,
                 accentColor = accentColor,
-                isConnected = isConnected
+                isConnected = isConnected,
+                modifier = Modifier.fillMaxSize()
             )
 
-            // Center Content: RPM, Speed, Gear, Throttle Bar
+            // Center Content: RPM, Speed, Gear, Throttle Bar (Enlarged for automotive driver readability)
             Column(
                 horizontalAlignment = Alignment.CenterHorizontally,
                 verticalArrangement = Arrangement.Center
             ) {
-                // RPM Digital Readout
+                // RPM Digital Readout (Bigger, bolder for head unit)
                 if (isConnected) {
                     val formattedRpm = NumberFormat.getNumberInstance(Locale.US).format(currentRpm)
                     Row(
@@ -110,44 +114,44 @@ fun BmwCenterHeroGauge(
                         Text(
                             text = formattedRpm,
                             fontFamily = FontFamily.SansSerif,
-                            fontWeight = FontWeight.ExtraBold,
-                            fontSize = 24.sp,
+                            fontWeight = FontWeight.Black,
+                            fontSize = 34.sp,
                             color = accentColor,
                             letterSpacing = (-0.5).sp
                         )
-                        Spacer(modifier = Modifier.width(4.dp))
+                        Spacer(modifier = Modifier.width(6.dp))
                         Text(
                             text = "RPM",
                             fontFamily = FontFamily.SansSerif,
-                            fontWeight = FontWeight.SemiBold,
-                            fontSize = 11.sp,
-                            color = TextSecondaryGrey.copy(alpha = 0.7f),
-                            modifier = Modifier.padding(bottom = 2.dp)
+                            fontWeight = FontWeight.Bold,
+                            fontSize = 15.sp,
+                            color = TextSecondaryGrey,
+                            modifier = Modifier.padding(bottom = 4.dp)
                         )
                     }
                 } else {
                     Text(
                         text = "--- RPM",
                         fontFamily = FontFamily.SansSerif,
-                        fontWeight = FontWeight.SemiBold,
-                        fontSize = 18.sp,
+                        fontWeight = FontWeight.Bold,
+                        fontSize = 24.sp,
                         color = TextMuted
                     )
                 }
 
-                // Mode Micro-Badge
+                // Mode Micro-Badge (Automotive high-contrast)
                 Box(
                     modifier = Modifier
-                        .padding(vertical = 2.dp)
-                        .clip(RoundedCornerShape(4.dp))
+                        .padding(vertical = 4.dp)
+                        .clip(RoundedCornerShape(8.dp))
                         .background(accentColor)
-                        .padding(horizontal = 8.dp, vertical = 2.dp)
+                        .padding(horizontal = 12.dp, vertical = 4.dp)
                 ) {
                     Text(
                         text = if (isConnected) telemetry.driveMode.badge else "GPS STANDALONE",
                         fontFamily = FontFamily.SansSerif,
-                        fontWeight = FontWeight.Bold,
-                        fontSize = 10.sp,
+                        fontWeight = FontWeight.Black,
+                        fontSize = 13.sp,
                         letterSpacing = 1.sp,
                         color = if (accentColor == BmwCyan) TextDark else TextPrimaryWhite
                     )
@@ -157,23 +161,23 @@ fun BmwCenterHeroGauge(
                 if (telemetry.overspeedAlert) {
                     Box(
                         modifier = Modifier
-                            .clip(RoundedCornerShape(6.dp))
+                            .clip(RoundedCornerShape(8.dp))
                             .background(BmwCrimson)
-                            .padding(horizontal = 10.dp, vertical = 2.dp)
+                            .padding(horizontal = 14.dp, vertical = 4.dp)
                     ) {
                         Text(
                             text = "SPEED LIMIT EXCEEDED",
                             fontFamily = FontFamily.SansSerif,
                             fontWeight = FontWeight.Black,
-                            fontSize = 10.sp,
+                            fontSize = 14.sp,
                             letterSpacing = 1.sp,
                             color = Color.White
                         )
                     }
-                    Spacer(modifier = Modifier.height(2.dp))
+                    Spacer(modifier = Modifier.height(4.dp))
                 }
 
-                // Ultra-Large Digital Speed Display
+                // Ultra-Large Digital Speed Display (Massive numeral dominant on car head unit)
                 Row(
                     verticalAlignment = Alignment.Bottom,
                     horizontalArrangement = Arrangement.Center,
@@ -183,19 +187,19 @@ fun BmwCenterHeroGauge(
                         text = "$displayedSpeed",
                         fontFamily = FontFamily.SansSerif,
                         fontWeight = FontWeight.Black,
-                        fontSize = 94.sp,
-                        lineHeight = 94.sp,
+                        fontSize = 132.sp,
+                        lineHeight = 132.sp,
                         letterSpacing = (-4).sp,
                         color = if (telemetry.overspeedAlert) BmwCrimson else TextPrimaryWhite
                     )
-                    Spacer(modifier = Modifier.width(6.dp))
+                    Spacer(modifier = Modifier.width(8.dp))
                     Text(
                         text = speedUnit.label,
                         fontFamily = FontFamily.SansSerif,
-                        fontWeight = FontWeight.Bold,
-                        fontSize = 18.sp,
+                        fontWeight = FontWeight.Black,
+                        fontSize = 28.sp,
                         color = if (telemetry.overspeedAlert) BmwCrimson else accentColor,
-                        modifier = Modifier.padding(bottom = 12.dp)
+                        modifier = Modifier.padding(bottom = 18.dp)
                     )
                 }
 
@@ -208,7 +212,7 @@ fun BmwCenterHeroGauge(
 
                 Spacer(modifier = Modifier.height(8.dp))
 
-                // Throttle / Load Vector Bar
+                // Throttle / Load Vector Bar (Enlarged)
                 ThrottleVectorBar(
                     throttlePercent = if (isConnected) telemetry.throttlePercent else 0,
                     accentColor = accentColor,
@@ -231,10 +235,10 @@ private fun ShiftLightBar(
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.Center,
         modifier = Modifier
-            .clip(RoundedCornerShape(20.dp))
+            .clip(RoundedCornerShape(24.dp))
             .background(Color(0xE605070A))
-            .border(1.dp, Color(0x22FFFFFF), RoundedCornerShape(20.dp))
-            .padding(horizontal = 10.dp, vertical = 4.dp)
+            .border(1.5.dp, Color(0x33FFFFFF), RoundedCornerShape(24.dp))
+            .padding(horizontal = 16.dp, vertical = 7.dp)
     ) {
         val leds = listOf(
             BmwOptimalGreen to 0.40f,
@@ -250,21 +254,21 @@ private fun ShiftLightBar(
             val displayColor = if (isActive) color else Color(0x22FFFFFF)
             Box(
                 modifier = Modifier
-                    .padding(horizontal = 2.dp)
-                    .size(width = 10.dp, height = 6.dp)
-                    .clip(RoundedCornerShape(1.dp))
+                    .padding(horizontal = 3.dp)
+                    .size(width = 20.dp, height = 12.dp)
+                    .clip(RoundedCornerShape(3.dp))
                     .background(displayColor)
             )
         }
 
-        Spacer(modifier = Modifier.width(6.dp))
+        Spacer(modifier = Modifier.width(10.dp))
         Text(
             text = shiftLabel,
             fontFamily = FontFamily.SansSerif,
-            fontWeight = FontWeight.SemiBold,
-            fontSize = 9.sp,
-            letterSpacing = 0.8.sp,
-            color = TextSecondaryGrey.copy(alpha = 0.7f)
+            fontWeight = FontWeight.Bold,
+            fontSize = 13.sp,
+            letterSpacing = 1.sp,
+            color = TextSecondaryGrey
         )
     }
 }
@@ -273,7 +277,8 @@ private fun ShiftLightBar(
 private fun BladeGaugeCanvas(
     rpmFraction: Float,
     accentColor: Color,
-    isConnected: Boolean
+    isConnected: Boolean,
+    modifier: Modifier = Modifier
 ) {
     val animRpm by animateFloatAsState(
         targetValue = rpmFraction,
@@ -281,50 +286,50 @@ private fun BladeGaugeCanvas(
         label = "rpmAnim"
     )
 
-    Canvas(modifier = Modifier.size(width = 380.dp, height = 310.dp)) {
+    Canvas(modifier = modifier) {
         val w = size.width
         val h = size.height
 
         // Left blade path: 0 to 4000 RPM
         val leftBladePath = Path().apply {
-            moveTo(w * 0.24f, h * 0.84f)
-            lineTo(w * 0.12f, h * 0.62f)
-            lineTo(w * 0.12f, h * 0.34f)
-            lineTo(w * 0.26f, h * 0.14f)
-            lineTo(w * 0.38f, h * 0.14f)
+            moveTo(w * 0.22f, h * 0.86f)
+            lineTo(w * 0.10f, h * 0.62f)
+            lineTo(w * 0.10f, h * 0.34f)
+            lineTo(w * 0.25f, h * 0.12f)
+            lineTo(w * 0.38f, h * 0.12f)
         }
 
         // Right blade path: 4000 to 7000+ Redline
         val rightBladePath = Path().apply {
-            moveTo(w * 0.76f, h * 0.84f)
-            lineTo(w * 0.88f, h * 0.62f)
-            lineTo(w * 0.88f, h * 0.34f)
-            lineTo(w * 0.74f, h * 0.14f)
-            lineTo(w * 0.62f, h * 0.14f)
+            moveTo(w * 0.78f, h * 0.86f)
+            lineTo(w * 0.90f, h * 0.62f)
+            lineTo(w * 0.90f, h * 0.34f)
+            lineTo(w * 0.75f, h * 0.12f)
+            lineTo(w * 0.62f, h * 0.12f)
         }
 
         // Draw background inactive tracks
         drawPath(
             path = leftBladePath,
-            color = Color(0x1AFFFFFF),
-            style = Stroke(width = 8f, cap = StrokeCap.Round, join = StrokeJoin.Round)
+            color = Color(0x22FFFFFF),
+            style = Stroke(width = 13f, cap = StrokeCap.Round, join = StrokeJoin.Round)
         )
         drawPath(
             path = rightBladePath,
-            color = Color(0x1AFFFFFF),
-            style = Stroke(width = 8f, cap = StrokeCap.Round, join = StrokeJoin.Round)
+            color = Color(0x22FFFFFF),
+            style = Stroke(width = 13f, cap = StrokeCap.Round, join = StrokeJoin.Round)
         )
 
         // Draw Redline danger sector on top right
         val redlineSector = Path().apply {
-            moveTo(w * 0.88f, h * 0.34f)
-            lineTo(w * 0.74f, h * 0.14f)
-            lineTo(w * 0.66f, h * 0.14f)
+            moveTo(w * 0.90f, h * 0.34f)
+            lineTo(w * 0.75f, h * 0.12f)
+            lineTo(w * 0.64f, h * 0.12f)
         }
         drawPath(
             path = redlineSector,
-            color = BmwCrimson.copy(alpha = 0.8f),
-            style = Stroke(width = 8f, cap = StrokeCap.Square, join = StrokeJoin.Round)
+            color = BmwCrimson.copy(alpha = 0.85f),
+            style = Stroke(width = 13f, cap = StrokeCap.Square, join = StrokeJoin.Round)
         )
 
         // Draw Active dynamic sweeps if connected
@@ -332,10 +337,10 @@ private fun BladeGaugeCanvas(
             val leftSweepProgress = (animRpm / 0.5f).coerceIn(0f, 1f)
             // Left active path portion
             val leftActivePath = Path().apply {
-                moveTo(w * 0.24f, h * 0.84f)
-                if (leftSweepProgress > 0.3f) lineTo(w * 0.12f, h * 0.62f)
-                if (leftSweepProgress > 0.6f) lineTo(w * 0.12f, h * 0.34f)
-                if (leftSweepProgress >= 0.9f) lineTo(w * 0.26f, h * 0.14f)
+                moveTo(w * 0.22f, h * 0.86f)
+                if (leftSweepProgress > 0.3f) lineTo(w * 0.10f, h * 0.62f)
+                if (leftSweepProgress > 0.6f) lineTo(w * 0.10f, h * 0.34f)
+                if (leftSweepProgress >= 0.9f) lineTo(w * 0.25f, h * 0.12f)
             }
             drawPath(
                 path = leftActivePath,
@@ -344,7 +349,7 @@ private fun BladeGaugeCanvas(
                     start = Offset(0f, h),
                     end = Offset(w * 0.4f, 0f)
                 ),
-                style = Stroke(width = 8f, cap = StrokeCap.Square, join = StrokeJoin.Round)
+                style = Stroke(width = 14f, cap = StrokeCap.Square, join = StrokeJoin.Round)
             )
 
             // Right active path if RPM exceeds 4000
@@ -352,15 +357,15 @@ private fun BladeGaugeCanvas(
                 val rightSweepProgress = ((animRpm - 0.5f) / 0.5f).coerceIn(0f, 1f)
                 val rightColor = if (animRpm > 0.85f) BmwCrimson else accentColor
                 val rightActivePath = Path().apply {
-                    moveTo(w * 0.62f, h * 0.14f)
-                    if (rightSweepProgress > 0.3f) lineTo(w * 0.74f, h * 0.14f)
-                    if (rightSweepProgress > 0.6f) lineTo(w * 0.88f, h * 0.34f)
-                    if (rightSweepProgress >= 0.9f) lineTo(w * 0.88f, h * 0.62f)
+                    moveTo(w * 0.62f, h * 0.12f)
+                    if (rightSweepProgress > 0.3f) lineTo(w * 0.75f, h * 0.12f)
+                    if (rightSweepProgress > 0.6f) lineTo(w * 0.90f, h * 0.34f)
+                    if (rightSweepProgress >= 0.9f) lineTo(w * 0.90f, h * 0.62f)
                 }
                 drawPath(
                     path = rightActivePath,
                     color = rightColor,
-                    style = Stroke(width = 8f, cap = StrokeCap.Square, join = StrokeJoin.Round)
+                    style = Stroke(width = 14f, cap = StrokeCap.Square, join = StrokeJoin.Round)
                 )
             }
         }
@@ -382,25 +387,25 @@ private fun GearSelectorPill(
         modifier = Modifier
             .clip(RoundedCornerShape(30.dp))
             .background(Color(0xD905070A))
-            .border(1.dp, Color(0x22FFFFFF), RoundedCornerShape(30.dp))
-            .padding(horizontal = 12.dp, vertical = 3.dp)
+            .border(1.5.dp, Color(0x33FFFFFF), RoundedCornerShape(30.dp))
+            .padding(horizontal = 18.dp, vertical = 7.dp)
     ) {
         gears.forEach { gear ->
             val isSelected = (gear == activeGear)
             if (isSelected) {
                 Box(
                     modifier = Modifier
-                        .padding(horizontal = 3.dp)
-                        .clip(RoundedCornerShape(4.dp))
+                        .padding(horizontal = 4.dp)
+                        .clip(RoundedCornerShape(8.dp))
                         .background(accentColor)
-                        .padding(horizontal = 8.dp, vertical = 2.dp),
+                        .padding(horizontal = 14.dp, vertical = 5.dp),
                     contentAlignment = Alignment.Center
                 ) {
                     Text(
                         text = gear,
                         fontFamily = FontFamily.SansSerif,
-                        fontWeight = FontWeight.ExtraBold,
-                        fontSize = 13.sp,
+                        fontWeight = FontWeight.Black,
+                        fontSize = 22.sp,
                         color = if (accentColor == BmwCyan) TextDark else TextPrimaryWhite
                     )
                 }
@@ -408,29 +413,29 @@ private fun GearSelectorPill(
                 Text(
                     text = gear,
                     fontFamily = FontFamily.SansSerif,
-                    fontWeight = FontWeight.SemiBold,
-                    fontSize = 12.sp,
+                    fontWeight = FontWeight.Bold,
+                    fontSize = 18.sp,
                     color = TextMuted.copy(alpha = 0.5f),
-                    modifier = Modifier.padding(horizontal = 4.dp)
+                    modifier = Modifier.padding(horizontal = 6.dp)
                 )
             }
         }
 
         // If in numbered manual gear (e.g. 1st - 6th from calibration)
         if (isNumberedGear) {
-            Spacer(modifier = Modifier.width(4.dp))
+            Spacer(modifier = Modifier.width(6.dp))
             Box(
                 modifier = Modifier
-                    .clip(RoundedCornerShape(4.dp))
+                    .clip(RoundedCornerShape(8.dp))
                     .background(accentColor)
-                    .padding(horizontal = 8.dp, vertical = 2.dp),
+                    .padding(horizontal = 14.dp, vertical = 5.dp),
                 contentAlignment = Alignment.Center
             ) {
                 Text(
                     text = "G$activeGear",
                     fontFamily = FontFamily.SansSerif,
-                    fontWeight = FontWeight.ExtraBold,
-                    fontSize = 13.sp,
+                    fontWeight = FontWeight.Black,
+                    fontSize = 22.sp,
                     color = if (accentColor == BmwCyan) TextDark else TextPrimaryWhite
                 )
             }
@@ -438,19 +443,19 @@ private fun GearSelectorPill(
 
         // Estimated badge
         if (isEstimated && activeGear != "-") {
-            Spacer(modifier = Modifier.width(6.dp))
+            Spacer(modifier = Modifier.width(8.dp))
             Box(
                 modifier = Modifier
-                    .clip(RoundedCornerShape(3.dp))
-                    .background(Color(0x33FFFFFF))
-                    .padding(horizontal = 4.dp, vertical = 1.dp)
+                    .clip(RoundedCornerShape(6.dp))
+                    .background(Color(0x40FFFFFF))
+                    .padding(horizontal = 8.dp, vertical = 3.dp)
             ) {
                 Text(
                     text = "EST",
                     fontFamily = FontFamily.SansSerif,
-                    fontWeight = FontWeight.Bold,
-                    fontSize = 8.sp,
-                    color = TextSecondaryGrey
+                    fontWeight = FontWeight.Black,
+                    fontSize = 12.sp,
+                    color = TextPrimaryWhite
                 )
             }
         }
@@ -470,23 +475,23 @@ private fun ThrottleVectorBar(
     )
 
     Column(
-        modifier = Modifier.width(180.dp),
+        modifier = Modifier.width(260.dp),
         horizontalAlignment = Alignment.CenterHorizontally
     ) {
-        // Track Bar
+        // Track Bar (Thicker and clearer for head units)
         Box(
             modifier = Modifier
                 .fillMaxWidth()
-                .height(4.dp)
-                .clip(RoundedCornerShape(2.dp))
-                .background(Color(0x22FFFFFF))
+                .height(9.dp)
+                .clip(RoundedCornerShape(4.5.dp))
+                .background(Color(0x26FFFFFF))
         ) {
             if (isConnected) {
                 Box(
                     modifier = Modifier
                         .fillMaxWidth(animPercent)
-                        .height(4.dp)
-                        .clip(RoundedCornerShape(2.dp))
+                        .height(9.dp)
+                        .clip(RoundedCornerShape(4.5.dp))
                         .background(
                             Brush.horizontalGradient(
                                 colors = listOf(Color(0xFFFF9900), accentColor)
@@ -496,7 +501,7 @@ private fun ThrottleVectorBar(
             }
         }
 
-        Spacer(modifier = Modifier.height(3.dp))
+        Spacer(modifier = Modifier.height(5.dp))
 
         Row(
             modifier = Modifier.fillMaxWidth(),
@@ -505,23 +510,23 @@ private fun ThrottleVectorBar(
             Text(
                 text = "IDLE",
                 fontFamily = FontFamily.SansSerif,
-                fontWeight = FontWeight.SemiBold,
-                fontSize = 9.sp,
-                color = TextSecondaryGrey.copy(alpha = 0.6f)
+                fontWeight = FontWeight.Bold,
+                fontSize = 12.sp,
+                color = TextSecondaryGrey.copy(alpha = 0.8f)
             )
             Text(
                 text = if (isConnected) "THROTTLE $throttlePercent%" else "THROTTLE --%",
                 fontFamily = FontFamily.SansSerif,
                 fontWeight = FontWeight.Bold,
-                fontSize = 9.sp,
+                fontSize = 13.sp,
                 color = if (isConnected) TextPrimaryWhite else TextMuted
             )
             Text(
                 text = "WOT",
                 fontFamily = FontFamily.SansSerif,
-                fontWeight = FontWeight.SemiBold,
-                fontSize = 9.sp,
-                color = BmwCrimson.copy(alpha = 0.8f)
+                fontWeight = FontWeight.Bold,
+                fontSize = 12.sp,
+                color = BmwCrimson
             )
         }
     }

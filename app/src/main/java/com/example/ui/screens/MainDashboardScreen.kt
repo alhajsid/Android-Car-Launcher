@@ -9,6 +9,7 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -230,10 +231,10 @@ fun MainDashboardScreen(
                             onOpenObdScreen = onOpenObdScreen,
                             modifier = Modifier
                                 .weight(1.05f)
-                                .fillMaxWidth()
+                                .fillMaxHeight()
                         )
 
-                        Spacer(modifier = Modifier.width(16.dp))
+                        Spacer(modifier = Modifier.width(12.dp))
 
                         // Center Zone (Hero Tachometer & Speedometer)
                         BmwCenterHeroGauge(
@@ -241,13 +242,13 @@ fun MainDashboardScreen(
                             speedUnit = settings.speedUnit,
                             accentColor = currentAccent,
                             modifier = Modifier
-                                .weight(1.4f)
-                                .fillMaxWidth()
+                                .weight(1.35f)
+                                .fillMaxHeight()
                         )
 
-                        Spacer(modifier = Modifier.width(16.dp))
+                        Spacer(modifier = Modifier.width(12.dp))
 
-                        // Right Zone (Fuel, Consumption, Clock & Media)
+                        // Right Zone (Fuel, Consumption, Clock & Media + CarPlay/Android Auto Shortcuts)
                         FuelAndMediaCard(
                             telemetry = telemetry,
                             is24Hour = settings.is24HourClock,
@@ -255,9 +256,11 @@ fun MainDashboardScreen(
                             onTogglePlayback = onTogglePlayback,
                             onSkipNext = onSkipNext,
                             onSkipPrevious = onSkipPrevious,
+                            onLaunchCarPlay = { onNavigate("carplay") },
+                            onLaunchAndroidAuto = { onNavigate("android_auto") },
                             modifier = Modifier
                                 .weight(1.05f)
-                                .fillMaxWidth()
+                                .fillMaxHeight()
                         )
                     }
                 } else {
@@ -295,6 +298,8 @@ fun MainDashboardScreen(
                                 onTogglePlayback = onTogglePlayback,
                                 onSkipNext = onSkipNext,
                                 onSkipPrevious = onSkipPrevious,
+                                onLaunchCarPlay = { onNavigate("carplay") },
+                                onLaunchAndroidAuto = { onNavigate("android_auto") },
                                 modifier = Modifier.weight(1f)
                             )
                         }

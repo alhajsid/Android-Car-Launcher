@@ -18,11 +18,18 @@ enum class DisplayBrightnessMode(val label: String) {
     NIGHT_OLED("Night Pure OLED")
 }
 
+enum class HeadUnitScale(val label: String, val scaleFactor: Float, val description: String) {
+    STANDARD("Compact", 1.0f, "Phone / Small tablet"),
+    LARGE("Car Unit (Default)", 1.22f, "Standard 7\"–9\" automotive stereo"),
+    EXTRA_LARGE("Large Car (10\"+)", 1.40f, "Large 10\"–12\" screen or distant HUD")
+}
+
 data class UserSettings(
     val speedUnit: SpeedUnit = SpeedUnit.KMH,
     val tempUnit: TempUnit = TempUnit.CELSIUS,
     val isHudMirrored: Boolean = false,
     val brightnessMode: DisplayBrightnessMode = DisplayBrightnessMode.NIGHT_OLED,
+    val headUnitScale: HeadUnitScale = HeadUnitScale.LARGE,
     val redlineRpm: Int = 7000,
     val coolantAlertThreshold: Int = 105,
     val speedLimitAlertKmh: Int = 0, // 0 = disabled, e.g. 120 km/h

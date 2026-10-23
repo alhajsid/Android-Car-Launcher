@@ -1,0 +1,21 @@
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="48dp"
+    android:height="48dp"
+    android:viewportWidth="48"
+    android:viewportHeight="48">
+    <!-- Android Auto Primary Emblem -->
+    <!-- Left Wing (Cyan) -->
+    <path
+        android:fillColor="#00E5FF"
+        android:pathData="M 24,7 L 10.5,33.5 C 9.5,35.5 11,38 13.3,38 L 24,32 L 24,7 Z" />
+
+    <!-- Right Wing (Royal Blue / Navy depth) -->
+    <path
+        android:fillColor="#2979FF"
+        android:pathData="M 24,7 L 34.7,33.5 C 35.7,35.5 34.2,38 31.9,38 L 24,32 L 24,7 Z" />
+
+    <!-- Center Cutout (White / Negative space accent) -->
+    <path
+        android:fillColor="#FFFFFF"
+        android:pathData="M 24,19 L 18.5,30 L 24,27 L 29.5,30 L 24,19 Z" />
+</vector>

@@ -101,11 +101,7 @@ class TelemetryRepository(private val context: Context) {
             }
         }
 
-        // Start Foreground OBD Telemetry Service safely
-        try {
-            val serviceIntent = Intent(context, ObdTelemetryService::class.java)
-            ContextCompat.startForegroundService(context, serviceIntent)
-        } catch (_: Exception) {}
+        startObdServiceIfPermitted()
 
         observeObdServiceMetrics()
         observeMediaSessions()
@@ -412,7 +408,23 @@ class TelemetryRepository(private val context: Context) {
         _telemetry.update { it.copy(driveMode = mode) }
     }
 
+    fun startObdServiceIfPermitted() {
+        val hasBtPermission = if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.S) {
+            context.checkSelfPermission(android.Manifest.permission.BLUETOOTH_CONNECT) == android.content.pm.PackageManager.PERMISSION_GRANTED
+        } else true
+
+        if (hasBtPermission) {
+            try {
+                val serviceIntent = Intent(context, ObdTelemetryService::class.java)
+                ContextCompat.startForegroundService(context, serviceIntent)
+            } catch (e: Exception) {
+                android.util.Log.e("TelemetryRepository", "Failed to start OBD service: ${e.message}")
+            }
+        }
+    }
+
     fun connectToAdapter(adapterId: String) {
+        startObdServiceIfPermitted()
         val target = detectedAdapters.value.find { it.id == adapterId } ?: return
         realObdManager.connect(target)
     }

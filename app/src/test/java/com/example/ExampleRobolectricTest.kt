@@ -103,4 +103,15 @@ class ExampleRobolectricTest {
     val devices = btManager.getPairedObdDevices()
     assertNotNull(devices)
   }
+
+  @Test
+  fun `carplay and android auto shortcuts present in apps repository`() {
+    val context = ApplicationProvider.getApplicationContext<Context>()
+    val repo = AppsRepository(context)
+    val apps = repo.getInstalledApps()
+    val hasCarPlay = apps.any { it.id == "carplay" || it.name.contains("CarPlay", ignoreCase = true) }
+    val hasAndroidAuto = apps.any { it.id == "android_auto" || it.name.contains("Android Auto", ignoreCase = true) }
+    assertTrue(hasCarPlay)
+    assertTrue(hasAndroidAuto)
+  }
 }

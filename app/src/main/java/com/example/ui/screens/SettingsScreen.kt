@@ -22,6 +22,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ArrowBack
+import androidx.compose.material.icons.filled.AspectRatio
 import androidx.compose.material.icons.filled.BrightnessMedium
 import androidx.compose.material.icons.filled.Build
 import androidx.compose.material.icons.filled.Check
@@ -55,6 +56,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.model.DisplayBrightnessMode
+import com.example.model.HeadUnitScale
 import com.example.model.SpeedUnit
 import com.example.model.TelemetryData
 import com.example.model.TempUnit
@@ -168,6 +170,54 @@ fun SettingsScreen(
                     .verticalScroll(rememberScrollState()),
                 verticalArrangement = Arrangement.spacedBy(14.dp)
             ) {
+                // Section 0: Car Head Unit Display & UI Scale (Crucial for 7", 9", 10", 12" head units)
+                SettingsSection(title = "HEAD UNIT DISPLAY & UI SCALE", icon = Icons.Default.AspectRatio) {
+                    Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                        Column {
+                            Text("Cockpit Interface Sizing", fontWeight = FontWeight.Bold, fontSize = 15.sp, color = TextPrimaryWhite)
+                            Text("Enlarges tachometer, digital dials, fonts, and dock touch targets for automotive dashboard viewing distance", fontSize = 12.sp, color = TextSecondaryGrey)
+                        }
+
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clip(RoundedCornerShape(12.dp))
+                                .background(Color(0x8005070A))
+                                .padding(4.dp),
+                            horizontalArrangement = Arrangement.spacedBy(6.dp)
+                        ) {
+                            HeadUnitScale.values().forEach { scaleOption ->
+                                val isSelected = (settings.headUnitScale == scaleOption)
+                                Box(
+                                    modifier = Modifier
+                                        .weight(1f)
+                                        .clip(RoundedCornerShape(10.dp))
+                                        .background(if (isSelected) accentColor else Color.Transparent)
+                                        .clickable { onUpdateSettings { it.copy(headUnitScale = scaleOption) } }
+                                        .padding(vertical = 12.dp, horizontal = 6.dp),
+                                    contentAlignment = Alignment.Center
+                                ) {
+                                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                                        Text(
+                                            text = scaleOption.label,
+                                            fontWeight = if (isSelected) FontWeight.Black else FontWeight.Bold,
+                                            fontSize = 13.sp,
+                                            color = if (isSelected) TextDark else TextPrimaryWhite
+                                        )
+                                        Spacer(modifier = Modifier.height(2.dp))
+                                        Text(
+                                            text = scaleOption.description,
+                                            fontWeight = FontWeight.Normal,
+                                            fontSize = 10.sp,
+                                            color = if (isSelected) TextDark.copy(alpha = 0.85f) else TextSecondaryGrey
+                                        )
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+
                 // Section 1: Units & Driving Metrics
                 SettingsSection(title = "UNITS & FORMAT", icon = Icons.Default.Speed) {
                     // Speed Unit Toggle
@@ -177,14 +227,14 @@ fun SettingsScreen(
                         verticalAlignment = Alignment.CenterVertically
                     ) {
                         Column {
-                            Text("Speedometer Units", fontWeight = FontWeight.Bold, fontSize = 13.sp, color = TextPrimaryWhite)
-                            Text("Standard metric (km/h) or imperial (mph)", fontSize = 10.sp, color = TextSecondaryGrey)
+                            Text("Speedometer Units", fontWeight = FontWeight.Bold, fontSize = 15.sp, color = TextPrimaryWhite)
+                            Text("Standard metric (km/h) or imperial (mph)", fontSize = 12.sp, color = TextSecondaryGrey)
                         }
                         Row(
                             modifier = Modifier
                                 .clip(RoundedCornerShape(8.dp))
                                 .background(Color(0x8005070A))
-                                .padding(3.dp),
+                                .padding(4.dp),
                             horizontalArrangement = Arrangement.spacedBy(4.dp)
                         ) {
                             SpeedUnit.values().forEach { unit ->
@@ -194,12 +244,12 @@ fun SettingsScreen(
                                         .clip(RoundedCornerShape(6.dp))
                                         .background(if (isSel) accentColor else Color.Transparent)
                                         .clickable { onUpdateSettings { it.copy(speedUnit = unit) } }
-                                        .padding(horizontal = 12.dp, vertical = 6.dp)
+                                        .padding(horizontal = 14.dp, vertical = 8.dp)
                                 ) {
                                     Text(
                                         text = unit.label.uppercase(),
                                         fontWeight = FontWeight.Bold,
-                                        fontSize = 11.sp,
+                                        fontSize = 13.sp,
                                         color = if (isSel) TextDark else TextSecondaryGrey
                                     )
                                 }
@@ -214,14 +264,14 @@ fun SettingsScreen(
                         verticalAlignment = Alignment.CenterVertically
                     ) {
                         Column {
-                            Text("Temperature Units", fontWeight = FontWeight.Bold, fontSize = 13.sp, color = TextPrimaryWhite)
-                            Text("Coolant & ambient Celsius or Fahrenheit", fontSize = 10.sp, color = TextSecondaryGrey)
+                            Text("Temperature Units", fontWeight = FontWeight.Bold, fontSize = 15.sp, color = TextPrimaryWhite)
+                            Text("Coolant & ambient Celsius or Fahrenheit", fontSize = 12.sp, color = TextSecondaryGrey)
                         }
                         Row(
                             modifier = Modifier
                                 .clip(RoundedCornerShape(8.dp))
                                 .background(Color(0x8005070A))
-                                .padding(3.dp),
+                                .padding(4.dp),
                             horizontalArrangement = Arrangement.spacedBy(4.dp)
                         ) {
                             TempUnit.values().forEach { unit ->
@@ -231,12 +281,12 @@ fun SettingsScreen(
                                         .clip(RoundedCornerShape(6.dp))
                                         .background(if (isSel) accentColor else Color.Transparent)
                                         .clickable { onUpdateSettings { it.copy(tempUnit = unit) } }
-                                        .padding(horizontal = 12.dp, vertical = 6.dp)
+                                        .padding(horizontal = 14.dp, vertical = 8.dp)
                                 ) {
                                     Text(
                                         text = unit.label,
                                         fontWeight = FontWeight.Bold,
-                                        fontSize = 11.sp,
+                                        fontSize = 13.sp,
                                         color = if (isSel) TextDark else TextSecondaryGrey
                                     )
                                 }
@@ -251,8 +301,8 @@ fun SettingsScreen(
                         verticalAlignment = Alignment.CenterVertically
                     ) {
                         Column {
-                            Text("24-Hour Digital Clock", fontWeight = FontWeight.Bold, fontSize = 13.sp, color = TextPrimaryWhite)
-                            Text("Toggle between 24h (18:42) and 12h (6:42 PM)", fontSize = 10.sp, color = TextSecondaryGrey)
+                            Text("24-Hour Digital Clock", fontWeight = FontWeight.Bold, fontSize = 15.sp, color = TextPrimaryWhite)
+                            Text("Toggle between 24h (18:42) and 12h (6:42 PM)", fontSize = 12.sp, color = TextSecondaryGrey)
                         }
                         Switch(
                             checked = settings.is24HourClock,

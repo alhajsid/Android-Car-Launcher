@@ -201,11 +201,14 @@ class AppsRepository(private val context: Context) {
             lowerPkg.contains("youtube") || lowerName.contains("music") -> AppCategory.MEDIA
 
             lowerPkg.contains("obd") || lowerPkg.contains("torque") || lowerPkg.contains("scanner") ||
-            lowerPkg.contains("car") || lowerPkg.contains("auto") || lowerPkg.contains("dash") -> AppCategory.OBD_TOOLS
+            lowerPkg.contains("diagnostics") || lowerName.contains("obd") -> AppCategory.OBD_TOOLS
 
+            lowerPkg.contains("carplay") || lowerPkg.contains("zlink") || lowerPkg.contains("tlink") ||
+            lowerPkg.contains("speedplay") || lowerPkg.contains("phonemirror") || lowerPkg.contains("gearhead") ||
             lowerPkg.contains("dialer") || lowerPkg.contains("phone") || lowerPkg.contains("contact") ||
             lowerPkg.contains("message") || lowerPkg.contains("chat") || lowerPkg.contains("whatsapp") ||
-            lowerPkg.contains("telegram") || lowerPkg.contains("call") -> AppCategory.COMMUNICATION
+            lowerPkg.contains("telegram") || lowerPkg.contains("call") || lowerName.contains("carplay") ||
+            lowerName.contains("android auto") -> AppCategory.COMMUNICATION
 
             else -> AppCategory.ALL
         }
@@ -248,6 +251,61 @@ class AppsRepository(private val context: Context) {
                 false
             }
         }
+    }
+
+    /**
+     * Attempts to launch Apple CarPlay companion link applications on car head units
+     * (ZLink, ZLink5, AutoKit / CarlinKit, TLink, SpeedPlay, EasyConnection, Carletter, etc.)
+     */
+    fun launchCarPlay(): Boolean {
+        val carPlayPackages = listOf(
+            "com.zjinnova.zlink5",
+            "com.zjinnova.zlink",
+            "cn.manstep.phonemirrorBox",
+            "cn.manstep.phonemirrorBox.wear",
+            "com.tlink.auto",
+            "com.suding.speedplay",
+            "net.easyconn",
+            "com.carletter.carletter",
+            "com.xyauto.link",
+            "com.yhp.carlink",
+            "com.hp.carlink",
+            "com.zjinnova.zlink.auto",
+            "com.apple.carplay"
+        )
+        for (pkg in carPlayPackages) {
+            val launchIntent = packageManager.getLaunchIntentForPackage(pkg)
+            if (launchIntent != null) {
+                launchIntent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                context.startActivity(launchIntent)
+                return true
+            }
+        }
+        return false
+    }
+
+    /**
+     * Attempts to launch Android Auto (official Gearhead projection or in-dash link apps)
+     */
+    fun launchAndroidAuto(): Boolean {
+        val androidAutoPackages = listOf(
+            "com.google.android.projection.gearhead",
+            "com.google.android.apps.auto",
+            "com.zjinnova.zlink5",
+            "com.zjinnova.zlink",
+            "cn.manstep.phonemirrorBox",
+            "com.tlink.auto",
+            "com.suding.speedplay"
+        )
+        for (pkg in androidAutoPackages) {
+            val launchIntent = packageManager.getLaunchIntentForPackage(pkg)
+            if (launchIntent != null) {
+                launchIntent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                context.startActivity(launchIntent)
+                return true
+            }
+        }
+        return false
     }
 
     /**
@@ -319,6 +377,8 @@ class AppsRepository(private val context: Context) {
 
     private fun getDefaultFallbackApps(): List<AppShortcut> {
         return listOf(
+            AppShortcut("carplay", "Apple CarPlay", "com.zjinnova.zlink5", AppCategory.COMMUNICATION, "carplay", Color.White, isFavorite = true),
+            AppShortcut("android_auto", "Android Auto", "com.google.android.projection.gearhead", AppCategory.COMMUNICATION, "android_auto", Color(0xFF00E5FF), isFavorite = true),
             AppShortcut("gmaps", "Google Maps", "com.google.android.apps.maps", AppCategory.NAVIGATION, "map", BmwCyan, isFavorite = true),
             AppShortcut("spotify", "Spotify", "com.spotify.music", AppCategory.MEDIA, "spotify", Color(0xFF1DB954), isFavorite = true),
             AppShortcut("waze", "Waze", "com.waze", AppCategory.NAVIGATION, "navigation", Color(0xFF33CCFF), isFavorite = true),
