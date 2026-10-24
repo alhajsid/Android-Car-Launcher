@@ -35,6 +35,7 @@ import java.util.concurrent.atomic.AtomicInteger
 /**
  * Manages Bluetooth Classic RFCOMM SPP and BLE GATT lifecycle, adapter filtering,
  * and serialized atomic command transactions for real OBD2 ELM327 adapters.
+ * Exposes a single command execution path ([executeCommand]) guarded by [commandMutex].
  */
 class ObdBluetoothConnectionManager(
     private val context: Context
@@ -58,14 +59,13 @@ class ObdBluetoothConnectionManager(
     }
 
     val bluetoothAdapter: BluetoothAdapter? by lazy {
-        bluetoothManager?.adapter ?: BluetoothAdapter.getDefaultAdapter()
+        bluetoothManager?.adapter
     }
 
     private val managerScope = CoroutineScope(Dispatchers.IO + SupervisorJob())
 
-    // Single serialized command executor lock per active connection
+    // Single serialized command executor lock for the active connection
     private val commandMutex = Mutex()
-    private val ioLock = Any()
     private val sessionGeneration = AtomicInteger(0)
 
     @Volatile
@@ -284,7 +284,7 @@ class ObdBluetoothConnectionManager(
                     ?: "BLE GATT connection failed for ${device.name}."
                 _lastErrorReason.value = reason
                 bleTransport.disconnect()
-                // If dual-mode device, only fall back to RFCOMM if it was not strictly LE-only
+                // If strictly LE-only, do not attempt Classic RFCOMM
                 if (bluetoothDevice.type == BluetoothDevice.DEVICE_TYPE_LE) {
                     _connectionStatus.value = ObdConnectionStatus.ERROR
                     return@withContext false
@@ -350,9 +350,9 @@ class ObdBluetoothConnectionManager(
     }
 
     /**
-     * Serialized, cancellation-aware coroutine command executor.
-     * Guarantees each write/read transaction is atomic across initialization, polling,
-     * manual DTC scan, and manual DTC clear.
+     * Sole serialized, cancellation-aware coroutine command executor.
+     * Guarantees every write/read transaction across initialization, live PID polling,
+     * manual DTC scan, and manual DTC clear is serialized by [commandMutex].
      */
     suspend fun executeCommand(cmd: String, timeoutMs: Long = 1000): String = commandMutex.withLock {
         currentCoroutineContext().ensureActive()
@@ -374,10 +374,8 @@ class ObdBluetoothConnectionManager(
                 drainStaleInput(inStream, buffer)
 
                 val payload = (cmd.trim() + "\r").toByteArray(Charsets.US_ASCII)
-                synchronized(ioLock) {
-                    out.write(payload)
-                    out.flush()
-                }
+                out.write(payload)
+                out.flush()
 
                 val sb = StringBuilder(64)
                 val startTime = System.currentTimeMillis()
@@ -410,59 +408,6 @@ class ObdBluetoothConnectionManager(
                 disconnect()
                 "ERROR: LOST CONNECTION"
             }
-        }
-    }
-
-    /**
-     * Synchronous fallback command sender (serialized on ioLock).
-     * Prefer [executeCommand] from coroutines.
-     */
-    fun sendCommand(cmd: String, timeoutMs: Long = 1000): String = synchronized(ioLock) {
-        val expectedGen = sessionGeneration.get()
-        val ble = activeBleTransport
-        if (ble != null && ble.isConnected) {
-            return ble.sendCommand(cmd, timeoutMs)
-        }
-
-        val out = outputStream ?: return "ERROR: NOT CONNECTED"
-        val inStream = inputStream ?: return "ERROR: NOT CONNECTED"
-        if (activeSocket?.isConnected != true) return "ERROR: NOT CONNECTED"
-
-        return try {
-            val buffer = ByteArray(256)
-            drainStaleInput(inStream, buffer)
-
-            val payload = (cmd.trim() + "\r").toByteArray(Charsets.US_ASCII)
-            out.write(payload)
-            out.flush()
-
-            val sb = StringBuilder(64)
-            val startTime = System.currentTimeMillis()
-
-            while (System.currentTimeMillis() - startTime < timeoutMs) {
-                if (sessionGeneration.get() != expectedGen || activeSocket?.isConnected != true) {
-                    return "ERROR: DISCONNECTED"
-                }
-                val avail = inStream.available()
-                if (avail > 0) {
-                    val count = inStream.read(buffer, 0, minOf(buffer.size, avail))
-                    if (count > 0) {
-                        val chunk = String(buffer, 0, count, Charsets.US_ASCII)
-                        sb.append(chunk)
-                        if (chunk.contains('>')) {
-                            break
-                        }
-                    }
-                } else {
-                    Thread.sleep(12)
-                }
-            }
-            val response = sb.toString()
-            if (response.isEmpty()) "ERROR: TIMEOUT" else response
-        } catch (e: Exception) {
-            Log.e(TAG, "Command send error: ${e.message}")
-            disconnect()
-            "ERROR: LOST CONNECTION"
         }
     }
 

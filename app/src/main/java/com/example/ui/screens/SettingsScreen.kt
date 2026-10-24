@@ -692,6 +692,27 @@ fun SettingsScreen(
                     }
                 }
 
+                // App Version Footer Badge (synced with BuildConfig)
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clip(RoundedCornerShape(14.dp))
+                        .background(Color(0x8005070A))
+                        .border(1.dp, Color(0x22FFFFFF), RoundedCornerShape(14.dp))
+                        .padding(vertical = 10.dp, horizontal = 14.dp)
+                        .testTag("app_version_footer"),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Text(
+                        text = "VISION HUD v${com.example.BuildConfig.VERSION_NAME} • BUILD ${com.example.BuildConfig.VERSION_CODE} • PACKAGE ${com.example.BuildConfig.APPLICATION_ID}",
+                        fontFamily = FontFamily.Monospace,
+                        fontWeight = FontWeight.Bold,
+                        fontSize = 10.sp,
+                        letterSpacing = 0.6.sp,
+                        color = TextSecondaryGrey
+                    )
+                }
+
                 Spacer(modifier = Modifier.height(20.dp))
             }
         }

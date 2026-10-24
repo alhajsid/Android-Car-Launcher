@@ -11,8 +11,11 @@ import android.bluetooth.BluetoothSocket
 import android.content.Context
 import android.os.Build
 import android.util.Log
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
@@ -25,14 +28,12 @@ import java.util.concurrent.CountDownLatch
 import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.AtomicInteger
 
+/**
+ * Unified OBD transport interface with a single serialized coroutine command execution path.
+ */
 interface ObdTransport {
     fun connect(): Boolean
-    fun sendCommand(cmd: String, timeoutMs: Long = 1200): String
-    suspend fun executeCommand(cmd: String, timeoutMs: Long = 1200): String {
-        return withContext(Dispatchers.IO) {
-            sendCommand(cmd, timeoutMs)
-        }
-    }
+    suspend fun executeCommand(cmd: String, timeoutMs: Long = 1200): String
     fun disconnect()
     val isConnected: Boolean
     val description: String
@@ -55,7 +56,7 @@ internal fun drainStaleInput(inStream: InputStream, scratchBuffer: ByteArray) {
 }
 
 /**
- * Real Bluetooth Classic SPP Transport (RFCOMM) with serialized command execution.
+ * Real Bluetooth Classic SPP Transport (RFCOMM) with a single serialized command Mutex.
  */
 class BluetoothClassicObdTransport(
     private val device: BluetoothDevice
@@ -63,7 +64,6 @@ class BluetoothClassicObdTransport(
 
     private val sppUuid: UUID = UUID.fromString("00001101-0000-1000-8000-00805F9B34FB")
     private val commandMutex = Mutex()
-    private val ioLock = Any()
     private val sessionGen = AtomicInteger(0)
 
     @Volatile
@@ -110,6 +110,7 @@ class BluetoothClassicObdTransport(
     }
 
     override suspend fun executeCommand(cmd: String, timeoutMs: Long): String = commandMutex.withLock {
+        currentCoroutineContext().ensureActive()
         withContext(Dispatchers.IO) {
             val gen = sessionGen.get()
             val out = outputStream ?: return@withContext "ERROR: NOT CONNECTED"
@@ -121,15 +122,14 @@ class BluetoothClassicObdTransport(
                 drainStaleInput(inStream, buffer)
 
                 val bytes = (cmd.trim() + "\r").toByteArray(Charsets.US_ASCII)
-                synchronized(ioLock) {
-                    out.write(bytes)
-                    out.flush()
-                }
+                out.write(bytes)
+                out.flush()
 
                 val sb = StringBuilder(64)
                 val startTime = System.currentTimeMillis()
 
                 while (System.currentTimeMillis() - startTime < timeoutMs) {
+                    currentCoroutineContext().ensureActive()
                     if (sessionGen.get() != gen || !isConnected) {
                         return@withContext "ERROR: DISCONNECTED"
                     }
@@ -149,55 +149,13 @@ class BluetoothClassicObdTransport(
                 }
                 val result = sb.toString()
                 if (result.isEmpty()) "ERROR: TIMEOUT" else result
+            } catch (ce: CancellationException) {
+                throw ce
             } catch (e: Exception) {
                 Log.e("BluetoothObd", "Command '$cmd' failed: ${e.message}")
                 disconnect()
                 "ERROR: CONNECTION LOST"
             }
-        }
-    }
-
-    override fun sendCommand(cmd: String, timeoutMs: Long): String = synchronized(ioLock) {
-        val gen = sessionGen.get()
-        val out = outputStream ?: return "ERROR: NOT CONNECTED"
-        val inStream = inputStream ?: return "ERROR: NOT CONNECTED"
-        if (!isConnected) return "ERROR: NOT CONNECTED"
-
-        return try {
-            val buffer = ByteArray(256)
-            drainStaleInput(inStream, buffer)
-
-            val bytes = (cmd.trim() + "\r").toByteArray(Charsets.US_ASCII)
-            out.write(bytes)
-            out.flush()
-
-            val sb = StringBuilder(64)
-            val startTime = System.currentTimeMillis()
-
-            while (System.currentTimeMillis() - startTime < timeoutMs) {
-                if (sessionGen.get() != gen || !isConnected) {
-                    return "ERROR: DISCONNECTED"
-                }
-                val avail = inStream.available()
-                if (avail > 0) {
-                    val count = inStream.read(buffer, 0, minOf(buffer.size, avail))
-                    if (count > 0) {
-                        val chunk = String(buffer, 0, count, Charsets.US_ASCII)
-                        sb.append(chunk)
-                        if (chunk.contains('>')) {
-                            break
-                        }
-                    }
-                } else {
-                    Thread.sleep(12)
-                }
-            }
-            val result = sb.toString()
-            if (result.isEmpty()) "ERROR: TIMEOUT" else result
-        } catch (e: Exception) {
-            Log.e("BluetoothObd", "Send failed: ${e.message}")
-            disconnect()
-            "ERROR: CONNECTION LOST"
         }
     }
 
@@ -226,8 +184,7 @@ class BluetoothClassicObdTransport(
  * - Nordic UART Service (Service 6E400001, Write 6E400002, Notify 6E400003)
  * - Microchip / ISSC Transparent UART (Service 49535343-FE7D-..., Write 49535343-8841-..., Notify 49535343-1E4D-...)
  *
- * If an adapter uses a proprietary/unsupported GATT profile, connect() cleanly releases GATT
- * and exposes a descriptive [unsupportedReason].
+ * Uses a single coroutine [commandMutex] for all command transactions.
  */
 class BleGattObdTransport(
     private val context: Context,
@@ -455,63 +412,53 @@ class BleGattObdTransport(
         }
     }
 
-    override suspend fun executeCommand(cmd: String, timeoutMs: Long): String = commandMutex.withLock {
-        withContext(Dispatchers.IO) {
-            sendCommandInternal(cmd, timeoutMs)
-        }
-    }
-
-    override fun sendCommand(cmd: String, timeoutMs: Long): String {
-        return sendCommandInternal(cmd, timeoutMs)
-    }
-
     @SuppressLint("MissingPermission")
-    private fun sendCommandInternal(cmd: String, timeoutMs: Long): String {
-        val gatt = bluetoothGatt ?: return "ERROR: NOT CONNECTED"
-        val writeChar = writeCharacteristic ?: return "ERROR: NOT CONNECTED"
-        val gen = sessionGen.get()
-        if (!isConnected) return "ERROR: NOT CONNECTED"
+    override suspend fun executeCommand(cmd: String, timeoutMs: Long): String = commandMutex.withLock {
+        currentCoroutineContext().ensureActive()
+        withContext(Dispatchers.IO) {
+            val gatt = bluetoothGatt ?: return@withContext "ERROR: NOT CONNECTED"
+            val writeChar = writeCharacteristic ?: return@withContext "ERROR: NOT CONNECTED"
+            val gen = sessionGen.get()
+            if (!isConnected) return@withContext "ERROR: NOT CONNECTED"
 
-        synchronized(responseLock) {
-            responseBuffer.setLength(0)
-        }
+            synchronized(responseLock) {
+                responseBuffer.setLength(0)
+            }
 
-        val payload = (cmd.trim() + "\r").toByteArray(Charsets.US_ASCII)
-        val wrote = try {
-            @Suppress("DEPRECATION")
-            writeChar.value = payload
-            writeChar.writeType = BluetoothGattCharacteristic.WRITE_TYPE_DEFAULT
-            @Suppress("DEPRECATION")
-            gatt.writeCharacteristic(writeChar)
-        } catch (e: Exception) {
-            Log.e(TAG, "BLE write failed: ${e.message}")
-            false
-        }
+            val payload = (cmd.trim() + "\r").toByteArray(Charsets.US_ASCII)
+            val wrote = try {
+                @Suppress("DEPRECATION")
+                writeChar.value = payload
+                writeChar.writeType = BluetoothGattCharacteristic.WRITE_TYPE_DEFAULT
+                @Suppress("DEPRECATION")
+                gatt.writeCharacteristic(writeChar)
+            } catch (e: Exception) {
+                Log.e(TAG, "BLE write failed: ${e.message}")
+                false
+            }
 
-        if (!wrote) {
-            return "ERROR: BLE WRITE FAILED"
-        }
+            if (!wrote) {
+                return@withContext "ERROR: BLE WRITE FAILED"
+            }
 
-        val deadline = System.currentTimeMillis() + timeoutMs
-        synchronized(responseLock) {
+            val deadline = System.currentTimeMillis() + timeoutMs
             while (System.currentTimeMillis() < deadline) {
+                currentCoroutineContext().ensureActive()
                 if (sessionGen.get() != gen || !isConnected) {
-                    return "ERROR: DISCONNECTED"
+                    return@withContext "ERROR: DISCONNECTED"
                 }
-                if (responseBuffer.indexOf(">") != -1) {
+                val hasPrompt = synchronized(responseLock) {
+                    responseBuffer.indexOf(">") != -1
+                }
+                if (hasPrompt) {
                     break
                 }
-                val remaining = deadline - System.currentTimeMillis()
-                if (remaining > 0) {
-                    try {
-                        responseLock.wait(minOf(remaining, 30L))
-                    } catch (_: InterruptedException) {
-                        break
-                    }
-                }
+                delay(15)
             }
-            val resp = responseBuffer.toString()
-            return if (resp.isEmpty()) "ERROR: TIMEOUT" else resp
+            val resp = synchronized(responseLock) {
+                responseBuffer.toString()
+            }
+            if (resp.isEmpty()) "ERROR: TIMEOUT" else resp
         }
     }
 
@@ -539,7 +486,7 @@ class BleGattObdTransport(
 }
 
 /**
- * Real Wi-Fi TCP Socket Transport (ELM327 Wi-Fi gateway) with serialized command execution.
+ * Real Wi-Fi TCP Socket Transport (ELM327 Wi-Fi gateway) with a single serialized command Mutex.
  */
 class WifiObdTransport(
     private val host: String = "192.168.0.10",
@@ -547,7 +494,6 @@ class WifiObdTransport(
 ) : ObdTransport {
 
     private val commandMutex = Mutex()
-    private val ioLock = Any()
     private val sessionGen = AtomicInteger(0)
 
     @Volatile
@@ -589,52 +535,52 @@ class WifiObdTransport(
     }
 
     override suspend fun executeCommand(cmd: String, timeoutMs: Long): String = commandMutex.withLock {
+        currentCoroutineContext().ensureActive()
         withContext(Dispatchers.IO) {
-            sendCommand(cmd, timeoutMs)
-        }
-    }
+            val gen = sessionGen.get()
+            val out = outputStream ?: return@withContext "ERROR: NOT CONNECTED"
+            val inStream = inputStream ?: return@withContext "ERROR: NOT CONNECTED"
+            if (!isConnected) return@withContext "ERROR: NOT CONNECTED"
 
-    override fun sendCommand(cmd: String, timeoutMs: Long): String = synchronized(ioLock) {
-        val gen = sessionGen.get()
-        val out = outputStream ?: return "ERROR: NOT CONNECTED"
-        val inStream = inputStream ?: return "ERROR: NOT CONNECTED"
-        if (!isConnected) return "ERROR: NOT CONNECTED"
+            try {
+                val buffer = ByteArray(256)
+                drainStaleInput(inStream, buffer)
 
-        return try {
-            val buffer = ByteArray(256)
-            drainStaleInput(inStream, buffer)
+                val bytes = (cmd.trim() + "\r").toByteArray(Charsets.US_ASCII)
+                out.write(bytes)
+                out.flush()
 
-            val bytes = (cmd.trim() + "\r").toByteArray(Charsets.US_ASCII)
-            out.write(bytes)
-            out.flush()
+                val sb = StringBuilder(64)
+                val startTime = System.currentTimeMillis()
 
-            val sb = StringBuilder(64)
-            val startTime = System.currentTimeMillis()
-
-            while (System.currentTimeMillis() - startTime < timeoutMs) {
-                if (sessionGen.get() != gen || !isConnected) {
-                    return "ERROR: DISCONNECTED"
-                }
-                val avail = inStream.available()
-                if (avail > 0) {
-                    val count = inStream.read(buffer, 0, minOf(buffer.size, avail))
-                    if (count > 0) {
-                        val chunk = String(buffer, 0, count, Charsets.US_ASCII)
-                        sb.append(chunk)
-                        if (chunk.contains('>')) {
-                            break
-                        }
+                while (System.currentTimeMillis() - startTime < timeoutMs) {
+                    currentCoroutineContext().ensureActive()
+                    if (sessionGen.get() != gen || !isConnected) {
+                        return@withContext "ERROR: DISCONNECTED"
                     }
-                } else {
-                    Thread.sleep(12)
+                    val avail = inStream.available()
+                    if (avail > 0) {
+                        val count = inStream.read(buffer, 0, minOf(buffer.size, avail))
+                        if (count > 0) {
+                            val chunk = String(buffer, 0, count, Charsets.US_ASCII)
+                            sb.append(chunk)
+                            if (chunk.contains('>')) {
+                                break
+                            }
+                        }
+                    } else {
+                        delay(12)
+                    }
                 }
+                val result = sb.toString()
+                if (result.isEmpty()) "ERROR: TIMEOUT" else result
+            } catch (ce: CancellationException) {
+                throw ce
+            } catch (e: Exception) {
+                Log.e("WifiObd", "Send failed: ${e.message}")
+                disconnect()
+                "ERROR: CONNECTION LOST"
             }
-            val result = sb.toString()
-            if (result.isEmpty()) "ERROR: TIMEOUT" else result
-        } catch (e: Exception) {
-            Log.e("WifiObd", "Send failed: ${e.message}")
-            disconnect()
-            "ERROR: CONNECTION LOST"
         }
     }
 

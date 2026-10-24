@@ -133,7 +133,12 @@ class RealObdManager(private val context: Context) {
         return ObdTelemetryService.instance?.manualScanDtc() ?: emptyList()
     }
 
-    suspend fun clearDtc(): Boolean {
-        return ObdTelemetryService.instance?.manualClearDtc() ?: false
+    suspend fun clearDtc(): DtcClearResult {
+        return ObdTelemetryService.instance?.manualClearDtc() ?: DtcClearResult(
+            status = DtcClearStatus.NOT_CONNECTED,
+            commandAccepted = false,
+            verifiedClear = false,
+            message = "OBD Telemetry Service is not active."
+        )
     }
 }

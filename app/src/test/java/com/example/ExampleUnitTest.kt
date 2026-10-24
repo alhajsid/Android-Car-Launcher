@@ -1,8 +1,13 @@
 package com.example
 
+import android.Manifest
+import android.os.Build
+import com.example.data.obd.DtcClearResult
+import com.example.data.obd.DtcClearStatus
 import com.example.data.obd.ObdProtocol
 import com.example.data.obd.ObdTransport
 import com.example.data.weather.WeatherRepository
+import com.example.ui.screens.areBluetoothScanPermissionsGranted
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.delay
@@ -27,49 +32,40 @@ class ExampleUnitTest {
 
     @Test
     fun testParseRpmCalculation() {
-        // 410C 1A F8 -> (0x1A * 256 + 0xF8) / 4 = 1726 RPM
         val raw = "41 0C 1A F8\r>"
         val rpm = ObdProtocol.parseRpm(raw)
         assertEquals(1726, rpm)
 
-        // Idle 800 RPM: 800 * 4 = 3200 = 0x0C80
         val idleRaw = "410C0C80>"
         assertEquals(800, ObdProtocol.parseRpm(idleRaw))
     }
 
     @Test
     fun testParseSpeedCalculation() {
-        // 410D 5A -> 0x5A = 90 km/h
         val raw = "41 0D 5A>"
         val speed = ObdProtocol.parseSpeed(raw)
         assertEquals(90, speed)
 
-        // 0 km/h
         assertEquals(0, ObdProtocol.parseSpeed("410D00>"))
     }
 
     @Test
     fun testParseCoolantCalculation() {
-        // 4105 82 -> 0x82 = 130 -> 130 - 40 = 90 °C
         val raw = "41 05 82>"
         val temp = ObdProtocol.parseCoolant(raw)
         assertEquals(90, temp)
 
-        // Cold engine 0 °C: 40 = 0x28
         assertEquals(0, ObdProtocol.parseCoolant("410528>"))
     }
 
     @Test
     fun testParseEngineLoadAndThrottleCalculation() {
-        // 4104 46 -> 0x46 = 70 -> (70 * 100) / 255 = 27 %
         assertEquals(27, ObdProtocol.parseEngineLoad("41 04 46>"))
-        // 4111 80 -> 0x80 = 128 -> (128 * 100) / 255 = 50 %
         assertEquals(50, ObdProtocol.parseThrottle("41 11 80>"))
     }
 
     @Test
     fun testParseMafAndVoltageCalculation() {
-        // 4110 05 78 -> (5 * 256 + 120) / 100.0 = 14.00 g/s
         val maf = ObdProtocol.parseMaf("41 10 05 78>")
         assertNotNull(maf)
         assertEquals(14.0f, maf!!, 0.01f)
@@ -88,7 +84,7 @@ class ExampleUnitTest {
         assertNotNull(boostBar)
         assertEquals(0.687f, boostBar!!, 0.01f)
 
-        // 2. Manifold Vacuum at Idle: 0x23 = 35 kPa -> (35 - 101.3) / 100 = -0.663 bar (must NOT be clamped to 0)
+        // 2. Manifold Vacuum at Idle: 0x23 = 35 kPa -> (35 - 101.3) / 100 = -0.663 bar
         val vacuumRaw = "41 0B 23>"
         assertEquals(35, ObdProtocol.parseMapKpa(vacuumRaw))
         val vacuumBar = ObdProtocol.parseBoost(vacuumRaw)
@@ -98,7 +94,7 @@ class ExampleUnitTest {
     }
 
     @Test
-    fun testClearDtcMode04Validation() {
+    fun testClearDtcMode04ValidationAndDtcClearResultContract() {
         // Valid Mode 04 positive acknowledgement (SID 0x44)
         assertTrue(ObdProtocol.isClearDtcSuccess("44\r>"))
         assertTrue(ObdProtocol.isClearDtcSuccess("44 00\r\n>"))
@@ -115,19 +111,87 @@ class ExampleUnitTest {
         assertFalse(ObdProtocol.isClearDtcSuccess("UNABLE TO CONNECT>"))
         assertFalse(ObdProtocol.isClearDtcSuccess("CAN ERROR>"))
         assertFalse(ObdProtocol.isClearDtcSuccess("STOPPED>"))
+
+        // Verify DtcClearResult distinguishes commandAccepted from verifiedClear
+        val acceptedButCodesRemain = DtcClearResult(
+            status = DtcClearStatus.ACCEPTED_CODES_REMAIN,
+            commandAccepted = true,
+            verifiedClear = false,
+            remainingCodes = listOf("P0420"),
+            isMilStillActive = true,
+            message = "Mode 04 accepted, but 1 code remains."
+        )
+        assertTrue(acceptedButCodesRemain.commandAccepted)
+        assertFalse(acceptedButCodesRemain.verifiedClear)
+        assertEquals(listOf("P0420"), acceptedButCodesRemain.remainingCodes)
+
+        val verifiedCleared = DtcClearResult(
+            status = DtcClearStatus.VERIFIED_CLEARED,
+            commandAccepted = true,
+            verifiedClear = true,
+            remainingCodes = emptyList(),
+            isMilStillActive = false,
+            message = "Mode 04 accepted & verified."
+        )
+        assertTrue(verifiedCleared.commandAccepted)
+        assertTrue(verifiedCleared.verifiedClear)
+    }
+
+    @Test
+    fun testBluetoothScanPermissionGrantValidation() {
+        // Android 12+ (API 31+): requires BOTH BLUETOOTH_CONNECT and BLUETOOTH_SCAN
+        assertFalse(areBluetoothScanPermissionsGranted(emptyMap(), Build.VERSION_CODES.S))
+        assertFalse(
+            areBluetoothScanPermissionsGranted(
+                mapOf(
+                    Manifest.permission.BLUETOOTH_CONNECT to true,
+                    Manifest.permission.BLUETOOTH_SCAN to false
+                ),
+                Build.VERSION_CODES.S
+            )
+        )
+        assertFalse(
+            areBluetoothScanPermissionsGranted(
+                mapOf(
+                    Manifest.permission.BLUETOOTH_CONNECT to false,
+                    Manifest.permission.BLUETOOTH_SCAN to false
+                ),
+                Build.VERSION_CODES.S
+            )
+        )
+        assertTrue(
+            areBluetoothScanPermissionsGranted(
+                mapOf(
+                    Manifest.permission.BLUETOOTH_CONNECT to true,
+                    Manifest.permission.BLUETOOTH_SCAN to true
+                ),
+                Build.VERSION_CODES.S
+            )
+        )
+
+        // Android 11 and below (API 30): requires location permission
+        assertFalse(
+            areBluetoothScanPermissionsGranted(
+                mapOf(Manifest.permission.ACCESS_FINE_LOCATION to false),
+                Build.VERSION_CODES.R
+            )
+        )
+        assertTrue(
+            areBluetoothScanPermissionsGranted(
+                mapOf(Manifest.permission.ACCESS_FINE_LOCATION to true),
+                Build.VERSION_CODES.R
+            )
+        )
     }
 
     @Test
     fun testParseSupportedPids0100Bitmask() {
-        // 41 00 BE 3E B8 11 -> tests bitmask decoding for PIDs 0101..0120
         val raw = "41 00 BE 3E B8 11>"
         val supported = ObdProtocol.parseSupportedPids0100(raw)
         assertTrue(supported.isNotEmpty())
-        // 0xBE = 10111110 -> bit 0 (0101) = 1, bit 2 (0103) = 1, bit 3 (0104) = 1, bit 4 (0105) = 1
         assertTrue(supported.contains("0101"))
         assertTrue(supported.contains("0104"))
         assertTrue(supported.contains("0105"))
-        // 0x3E in second byte -> 010C (bit 11) and 010D (bit 12)
         assertTrue(supported.contains("010C"))
         assertTrue(supported.contains("010D"))
     }
@@ -170,7 +234,6 @@ class ExampleUnitTest {
 
     @Test
     fun testObdCommandSerializationUnderConcurrency() = runBlocking {
-        // Verify that concurrent polling and manual diagnostic commands execute atomically one at a time
         val mutex = Mutex()
         val activeInFlight = AtomicInteger(0)
         val maxObservedConcurrency = AtomicInteger(0)
@@ -180,7 +243,6 @@ class ExampleUnitTest {
             override val description: String = "FakeSerializedTransport"
             override fun connect(): Boolean = true
             override fun disconnect() { isConnected = false }
-            override fun sendCommand(cmd: String, timeoutMs: Long): String = "410C0C80>"
 
             override suspend fun executeCommand(cmd: String, timeoutMs: Long): String = mutex.withLock {
                 val current = activeInFlight.incrementAndGet()
@@ -215,17 +277,14 @@ class ExampleUnitTest {
             cacheExpiryMs = 15 * 60 * 1000L,
             minDistanceDisplacementMeters = 2_500.0
         )
-        // Fresh repository with no cache should fetch
         assertTrue(repo.shouldFetchWeather(48.1351, 11.5820, nowMs = 100_000L))
 
-        // Distance between Munich Marienplatz (48.137154, 11.576124) and 100m away is < 2.5km
         val distSmall = WeatherRepository.calculateDistanceMeters(
             48.137154, 11.576124,
             48.137500, 11.576500
         )
         assertTrue("Expected < 200m, got $distSmall", distSmall < 200.0)
 
-        // Distance between Munich and Berlin is > 400km
         val distLarge = WeatherRepository.calculateDistanceMeters(
             48.1351, 11.5820,
             52.5200, 13.4050

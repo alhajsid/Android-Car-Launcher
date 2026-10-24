@@ -447,21 +447,37 @@ class ObdTelemetryService : Service() {
 
     /**
      * Serialized manual DTC clear (OBD Mode 04).
-     * Strictly validates positive Mode 04 acknowledgement ("44") and refreshes MIL/DTC status
-     * from the ECU to confirm actual post-clear state.
+     * Strictly validates positive Mode 04 acknowledgement ("44"), refreshes MIL/DTC status
+     * from the ECU, and returns a structured [DtcClearResult] separating command acceptance
+     * from verified post-clear ECU state.
      */
-    suspend fun manualClearDtc(): Boolean = withContext(Dispatchers.IO) {
+    suspend fun manualClearDtc(): DtcClearResult = withContext(Dispatchers.IO) {
         if (!connectionManager.isConnected) {
             addLog("Clear DTC failed: adapter not connected.")
-            return@withContext false
+            return@withContext DtcClearResult(
+                status = DtcClearStatus.NOT_CONNECTED,
+                commandAccepted = false,
+                verifiedClear = false,
+                remainingCodes = _dtcCodes.value,
+                isMilStillActive = _isMilActive.value,
+                message = "Clear aborted: OBD-II adapter is not connected."
+            )
         }
         val resp = connectionManager.executeCommand(ObdProtocol.CMD_CLEAR_DTC, 1800)
         val clean = ObdProtocol.cleanResponse(resp)
         val accepted = ObdProtocol.isClearDtcSuccess(resp)
 
         if (!accepted) {
-            addLog("ECU rejected or failed Mode 04 Clear DTC (RX: ${clean.ifEmpty { "TIMEOUT/EMPTY" }}).")
-            return@withContext false
+            val rxDesc = clean.ifEmpty { "TIMEOUT/EMPTY" }
+            addLog("ECU rejected or failed Mode 04 Clear DTC (RX: $rxDesc).")
+            return@withContext DtcClearResult(
+                status = DtcClearStatus.REJECTED_OR_FAILED,
+                commandAccepted = false,
+                verifiedClear = false,
+                remainingCodes = _dtcCodes.value,
+                isMilStillActive = _isMilActive.value,
+                message = "Clear rejected by ECU/adapter (RX: $rxDesc)."
+            )
         }
 
         addLog("ECU accepted Mode 04 Clear DTC command (RX: $clean). Verifying MIL/DTC status...")
@@ -470,12 +486,29 @@ class ObdTelemetryService : Service() {
 
         val remainingCodes = _dtcCodes.value
         val milStillOn = _isMilActive.value
-        if (remainingCodes.isEmpty() && !milStillOn) {
+        val isVerifiedClear = remainingCodes.isEmpty() && !milStillOn
+
+        if (isVerifiedClear) {
             addLog("Confirmed: ECU fault codes cleared and MIL extinguished.")
+            DtcClearResult(
+                status = DtcClearStatus.VERIFIED_CLEARED,
+                commandAccepted = true,
+                verifiedClear = true,
+                remainingCodes = emptyList(),
+                isMilStillActive = false,
+                message = "Mode 04 accepted & verified: 0 active fault codes, MIL off."
+            )
         } else {
             addLog("Mode 04 accepted, but ECU still reports MIL=$milStillOn, Permanent/Active DTCs=$remainingCodes.")
+            DtcClearResult(
+                status = DtcClearStatus.ACCEPTED_CODES_REMAIN,
+                commandAccepted = true,
+                verifiedClear = false,
+                remainingCodes = remainingCodes,
+                isMilStillActive = milStillOn,
+                message = "Mode 04 accepted, but ${remainingCodes.size} permanent/active code(s) or MIL remain."
+            )
         }
-        true
     }
 
     /**

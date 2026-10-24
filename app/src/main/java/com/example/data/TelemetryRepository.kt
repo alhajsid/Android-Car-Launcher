@@ -747,13 +747,16 @@ class TelemetryRepository(private val context: Context) {
         return codes
     }
 
-    suspend fun clearDtc(): Boolean {
-        val success = realObdManager.clearDtc()
-        if (success) {
-            val remaining = ObdTelemetryService.instance?.dtcCodes?.value ?: emptyList()
-            val mil = ObdTelemetryService.instance?.isMilActive?.value ?: false
-            _telemetry.update { it.copy(dtcCodes = remaining, isMilActive = mil) }
+    suspend fun clearDtc(): com.example.data.obd.DtcClearResult {
+        val result = realObdManager.clearDtc()
+        if (result.commandAccepted) {
+            _telemetry.update {
+                it.copy(
+                    dtcCodes = result.remainingCodes,
+                    isMilActive = result.isMilStillActive
+                )
+            }
         }
-        return success
+        return result
     }
 }

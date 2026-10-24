@@ -365,3 +365,20 @@ data class ParsedObdMetrics(
     val supportedPidsCount: Int = 0,
     val pollLatencyMs: Long = 0L
 )
+
+enum class DtcClearStatus {
+    VERIFIED_CLEARED,
+    ACCEPTED_CODES_REMAIN,
+    REJECTED_OR_FAILED,
+    NOT_CONNECTED
+}
+
+data class DtcClearResult(
+    val status: DtcClearStatus,
+    val commandAccepted: Boolean,
+    val verifiedClear: Boolean,
+    val remainingCodes: List<String> = emptyList(),
+    val isMilStillActive: Boolean = false,
+    val message: String = ""
+)
+

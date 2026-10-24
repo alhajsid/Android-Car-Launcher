@@ -1,6 +1,8 @@
 package com.example.ui.screens
 
 import android.Manifest
+import android.content.Context
+import android.content.pm.PackageManager
 import android.os.Build
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
@@ -27,10 +29,9 @@ import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.ArrowBack
+import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Bluetooth
 import androidx.compose.material.icons.filled.Build
-import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Warning
@@ -56,14 +57,17 @@ import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.core.content.ContextCompat
+import com.example.data.obd.DtcClearResult
+import com.example.data.obd.DtcClearStatus
 import com.example.model.ObdAdapterDevice
 import com.example.model.ObdConnectionStatus
-import com.example.model.ObdConnectionType
 import com.example.model.TelemetryData
 import com.example.model.UserSettings
 import com.example.ui.theme.BmwAmber
@@ -79,6 +83,44 @@ import com.example.ui.theme.TextPrimaryWhite
 import com.example.ui.theme.TextSecondaryGrey
 import kotlinx.coroutines.launch
 
+/**
+ * Validates whether the returned permission results map satisfies the Bluetooth scan & connect
+ * requirements for the active Android SDK version.
+ */
+fun areBluetoothScanPermissionsGranted(
+    permissions: Map<String, Boolean>,
+    sdkInt: Int = Build.VERSION.SDK_INT
+): Boolean {
+    if (permissions.isEmpty()) return false
+    return if (sdkInt >= Build.VERSION_CODES.S) {
+        permissions[Manifest.permission.BLUETOOTH_CONNECT] == true &&
+            permissions[Manifest.permission.BLUETOOTH_SCAN] == true
+    } else {
+        permissions[Manifest.permission.ACCESS_FINE_LOCATION] == true ||
+            permissions[Manifest.permission.ACCESS_COARSE_LOCATION] == true
+    }
+}
+
+/**
+ * Checks whether the Context already holds the required runtime permissions for Bluetooth scanning.
+ */
+fun hasBluetoothScanPermissions(
+    context: Context,
+    sdkInt: Int = Build.VERSION.SDK_INT
+): Boolean {
+    return if (sdkInt >= Build.VERSION_CODES.S) {
+        ContextCompat.checkSelfPermission(context, Manifest.permission.BLUETOOTH_CONNECT) ==
+            PackageManager.PERMISSION_GRANTED &&
+            ContextCompat.checkSelfPermission(context, Manifest.permission.BLUETOOTH_SCAN) ==
+            PackageManager.PERMISSION_GRANTED
+    } else {
+        ContextCompat.checkSelfPermission(context, Manifest.permission.ACCESS_FINE_LOCATION) ==
+            PackageManager.PERMISSION_GRANTED ||
+            ContextCompat.checkSelfPermission(context, Manifest.permission.ACCESS_COARSE_LOCATION) ==
+            PackageManager.PERMISSION_GRANTED
+    }
+}
+
 @Composable
 fun ObdConnectionScreen(
     telemetry: TelemetryData,
@@ -92,25 +134,50 @@ fun ObdConnectionScreen(
     onDisconnectAdapter: () -> Unit,
     onToggleSimulation: (Boolean) -> Unit,
     onScanDtc: suspend () -> List<String> = { emptyList() },
-    onClearDtc: suspend () -> Boolean = { false },
+    onClearDtc: suspend () -> DtcClearResult = {
+        DtcClearResult(
+            status = DtcClearStatus.NOT_CONNECTED,
+            commandAccepted = false,
+            verifiedClear = false,
+            message = "Adapter not connected."
+        )
+    },
     onBack: () -> Unit,
     modifier: Modifier = Modifier
 ) {
+    val context = LocalContext.current
     val accentColor = telemetry.driveMode.primaryColor
     val logListState = rememberLazyListState()
     val scope = rememberCoroutineScope()
     var isDtcScanning by remember { mutableStateOf(false) }
     var dtcStatusMessage by remember { mutableStateOf("") }
+    var dtcClearStatus by remember { mutableStateOf<DtcClearStatus?>(null) }
+    var permissionDeniedMessage by remember { mutableStateOf<String?>(null) }
 
     val permissionLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.RequestMultiplePermissions()
-    ) {
-        onTriggerScan()
+    ) { permissions ->
+        if (areBluetoothScanPermissionsGranted(permissions)) {
+            permissionDeniedMessage = null
+            onTriggerScan()
+        } else {
+            permissionDeniedMessage =
+                "Bluetooth Scan & Connect permissions are required to discover OBD-II adapters."
+        }
     }
 
-    LaunchedEffect(diagnosticLogs.size) {
-        if (diagnosticLogs.isNotEmpty()) {
-            logListState.animateScrollToItem(diagnosticLogs.size - 1)
+    // Non-animating, user-scroll-aware live log follow:
+    // Keys on the latest log entry (since the ring buffer is capped at 35 entries) and uses instant
+    // scrollToItem() only when the user is already near the bottom and not actively scrolling.
+    val latestLogEntry = diagnosticLogs.lastOrNull()
+    LaunchedEffect(latestLogEntry) {
+        if (diagnosticLogs.isNotEmpty() && !logListState.isScrollInProgress) {
+            val visibleItems = logListState.layoutInfo.visibleItemsInfo
+            val lastVisibleIndex = visibleItems.lastOrNull()?.index ?: -1
+            val isNearBottom = visibleItems.isEmpty() || lastVisibleIndex >= (diagnosticLogs.lastIndex - 3)
+            if (isNearBottom) {
+                logListState.scrollToItem(diagnosticLogs.lastIndex)
+            }
         }
     }
 
@@ -142,7 +209,7 @@ fun ObdConnectionScreen(
                     verticalAlignment = Alignment.CenterVertically
                 ) {
                     Icon(
-                        imageVector = Icons.Default.ArrowBack,
+                        imageVector = Icons.AutoMirrored.Filled.ArrowBack,
                         contentDescription = "Back",
                         tint = accentColor,
                         modifier = Modifier.size(18.dp)
@@ -160,7 +227,7 @@ fun ObdConnectionScreen(
                 // Status Badge in Header
                 val statusText = when (obdStatus) {
                     ObdConnectionStatus.CONNECTED -> "REAL OBD-II CAN LINKED"
-                    ObdConnectionStatus.CONNECTING -> "ESTABLISHING RFCOMM LINK..."
+                    ObdConnectionStatus.CONNECTING -> "ESTABLISHING LINK..."
                     ObdConnectionStatus.INITIALIZING_ELM -> "ELM327 HANDSHAKING..."
                     ObdConnectionStatus.BUS_INIT_CAN -> "BUS AUTO-DETECT..."
                     ObdConnectionStatus.SCANNING -> "SCANNING BLUETOOTH..."
@@ -200,10 +267,13 @@ fun ObdConnectionScreen(
                     }
                 }
 
-                // Scan / Refresh Button
+                // Scan / Refresh Button with verified permission check
                 Button(
                     onClick = {
-                        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+                        if (hasBluetoothScanPermissions(context)) {
+                            permissionDeniedMessage = null
+                            onTriggerScan()
+                        } else if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
                             permissionLauncher.launch(
                                 arrayOf(
                                     Manifest.permission.BLUETOOTH_CONNECT,
@@ -212,11 +282,17 @@ fun ObdConnectionScreen(
                                 )
                             )
                         } else {
-                            onTriggerScan()
+                            permissionLauncher.launch(
+                                arrayOf(
+                                    Manifest.permission.ACCESS_FINE_LOCATION,
+                                    Manifest.permission.ACCESS_COARSE_LOCATION
+                                )
+                            )
                         }
                     },
                     colors = ButtonDefaults.buttonColors(containerColor = Color(0x334CC2FF)),
-                    shape = RoundedCornerShape(12.dp)
+                    shape = RoundedCornerShape(12.dp),
+                    modifier = Modifier.testTag("rescan_bluetooth_button")
                 ) {
                     if (isScanning) {
                         CircularProgressIndicator(
@@ -235,6 +311,37 @@ fun ObdConnectionScreen(
                         )
                         Spacer(modifier = Modifier.width(6.dp))
                         Text("RESCAN BLUETOOTH", fontSize = 11.sp, color = BmwCyan, fontWeight = FontWeight.Bold)
+                    }
+                }
+            }
+
+            // Permission Denied Warning Banner if user declined Bluetooth permissions
+            permissionDeniedMessage?.let { deniedMsg ->
+                Spacer(modifier = Modifier.height(8.dp))
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clip(RoundedCornerShape(10.dp))
+                        .background(BmwCrimson.copy(alpha = 0.2f))
+                        .border(1.dp, BmwCrimson, RoundedCornerShape(10.dp))
+                        .padding(horizontal = 12.dp, vertical = 6.dp)
+                        .testTag("permission_denied_banner")
+                ) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Icon(
+                            imageVector = Icons.Default.Warning,
+                            contentDescription = null,
+                            tint = BmwCrimson,
+                            modifier = Modifier.size(16.dp)
+                        )
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Text(
+                            text = deniedMsg,
+                            fontFamily = FontFamily.SansSerif,
+                            fontWeight = FontWeight.Bold,
+                            fontSize = 11.sp,
+                            color = Color(0xFFFF8888)
+                        )
                     }
                 }
             }
@@ -363,7 +470,7 @@ fun ObdConnectionScreen(
                                 val color = when {
                                     logEntry.contains("RX:") -> BmwOptimalGreen
                                     logEntry.contains("TX:") -> BmwCyan
-                                    logEntry.contains("ERROR") || logEntry.contains("Warning") -> BmwCrimson
+                                    logEntry.contains("ERROR") || logEntry.contains("Warning") || logEntry.contains("rejected") -> BmwCrimson
                                     logEntry.contains("CAN:") -> Color(0xFFFFD54F)
                                     else -> TextSecondaryGrey
                                 }
@@ -429,13 +536,24 @@ fun ObdConnectionScreen(
                                                 isDtcScanning = true
                                                 val codes = onScanDtc()
                                                 isDtcScanning = false
-                                                dtcStatusMessage = if (codes.isEmpty()) "No fault codes found" else "${codes.size} codes found"
+                                                dtcClearStatus = null
+                                                dtcStatusMessage = if (codes.isEmpty()) {
+                                                    "No fault codes found"
+                                                } else {
+                                                    "${codes.size} fault code(s) found"
+                                                }
                                             }
                                         },
+                                        enabled = !isDtcScanning,
                                         colors = ButtonDefaults.buttonColors(containerColor = Color(0x334CC2FF)),
                                         shape = RoundedCornerShape(8.dp)
                                     ) {
-                                        Text("SCAN DTC (MODE 03)", fontSize = 9.sp, color = BmwCyan, fontWeight = FontWeight.Bold)
+                                        Text(
+                                            text = if (isDtcScanning) "SCANNING..." else "SCAN DTC (MODE 03)",
+                                            fontSize = 9.sp,
+                                            color = BmwCyan,
+                                            fontWeight = FontWeight.Bold
+                                        )
                                     }
 
                                     // Clear DTC Button
@@ -443,20 +561,20 @@ fun ObdConnectionScreen(
                                         Button(
                                             onClick = {
                                                 scope.launch {
-                                                    val accepted = onClearDtc()
-                                                    dtcStatusMessage = if (!accepted) {
-                                                        "Clear rejected: ECU did not acknowledge Mode 04"
-                                                    } else if (telemetry.dtcCodes.isEmpty() && !telemetry.isMilActive) {
-                                                        "Mode 04 accepted — ECU confirmed 0 active fault codes"
-                                                    } else {
-                                                        "Mode 04 accepted by ECU — permanent/active fault(s) still present"
-                                                    }
+                                                    val clearResult = onClearDtc()
+                                                    dtcClearStatus = clearResult.status
+                                                    dtcStatusMessage = clearResult.message
                                                 }
                                             },
                                             colors = ButtonDefaults.buttonColors(containerColor = BmwCrimson.copy(alpha = 0.3f)),
                                             shape = RoundedCornerShape(8.dp)
                                         ) {
-                                            Icon(imageVector = Icons.Default.Delete, contentDescription = null, tint = BmwCrimson, modifier = Modifier.size(12.dp))
+                                            Icon(
+                                                imageVector = Icons.Default.Delete,
+                                                contentDescription = null,
+                                                tint = BmwCrimson,
+                                                modifier = Modifier.size(12.dp)
+                                            )
                                             Spacer(modifier = Modifier.width(3.dp))
                                             Text("CLEAR (MODE 04)", fontSize = 9.sp, color = BmwCrimson, fontWeight = FontWeight.Bold)
                                         }
@@ -464,7 +582,7 @@ fun ObdConnectionScreen(
                                 }
                             }
 
-                            // DTC Results
+                            // DTC Results & Clear Verification Status
                             if (telemetry.dtcCodes.isNotEmpty()) {
                                 Row(
                                     modifier = Modifier.fillMaxWidth(),
@@ -482,13 +600,26 @@ fun ObdConnectionScreen(
                                         }
                                     }
                                 }
-                            } else {
-                                Text(
-                                    text = if (dtcStatusMessage.isNotEmpty()) dtcStatusMessage else if (obdStatus == ObdConnectionStatus.CONNECTED) "No active fault codes recorded in ECU." else "Connect to vehicle adapter to scan trouble codes.",
-                                    fontSize = 10.sp,
-                                    color = TextSecondaryGrey
-                                )
                             }
+
+                            val statusColor = when (dtcClearStatus) {
+                                DtcClearStatus.VERIFIED_CLEARED -> BmwOptimalGreen
+                                DtcClearStatus.ACCEPTED_CODES_REMAIN -> BmwAmber
+                                DtcClearStatus.REJECTED_OR_FAILED, DtcClearStatus.NOT_CONNECTED -> BmwCrimson
+                                null -> TextSecondaryGrey
+                            }
+                            val fallbackText = if (obdStatus == ObdConnectionStatus.CONNECTED) {
+                                "No active fault codes recorded in ECU."
+                            } else {
+                                "Connect to vehicle adapter to scan trouble codes."
+                            }
+
+                            Text(
+                                text = dtcStatusMessage.ifEmpty { fallbackText },
+                                fontSize = 10.sp,
+                                fontWeight = if (dtcClearStatus != null) FontWeight.Bold else FontWeight.Normal,
+                                color = statusColor
+                            )
                         }
                     }
 
@@ -556,8 +687,9 @@ fun ObdConnectionScreen(
                             verticalArrangement = Arrangement.spacedBy(8.dp)
                         ) {
                             items(adapters, key = { it.id }) { device ->
-                                val isCurrentConnected = (obdStatus == ObdConnectionStatus.CONNECTED || obdStatus == ObdConnectionStatus.INITIALIZING_ELM) &&
-                                    (telemetry.obdAdapterName == device.name)
+                                val isCurrentConnected =
+                                    (obdStatus == ObdConnectionStatus.CONNECTED || obdStatus == ObdConnectionStatus.INITIALIZING_ELM) &&
+                                        (telemetry.obdAdapterName == device.name)
                                 ObdAdapterCard(
                                     device = device,
                                     isConnected = isCurrentConnected,

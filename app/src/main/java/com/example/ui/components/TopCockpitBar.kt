@@ -93,7 +93,7 @@ fun TopCockpitBar(
                     .padding(horizontal = 8.dp, vertical = 4.dp)
             ) {
                 Text(
-                    text = "M-TELEMETRY",
+                    text = "M-TELEMETRY v${com.example.BuildConfig.VERSION_NAME}",
                     fontFamily = FontFamily.SansSerif,
                     fontWeight = FontWeight.Bold,
                     fontSize = 12.sp,
