@@ -2,22 +2,17 @@ package com.example.data.obd
 
 import android.annotation.SuppressLint
 import android.bluetooth.BluetoothAdapter
+import android.bluetooth.BluetoothDevice
 import android.bluetooth.BluetoothManager
 import android.content.Context
 import com.example.model.ObdAdapterDevice
 import com.example.model.ObdConnectionStatus
 import com.example.model.ObdConnectionType
-import kotlinx.coroutines.CoroutineScope
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
-import kotlinx.coroutines.launch
 
 class RealObdManager(private val context: Context) {
-
-    private val scope = CoroutineScope(Dispatchers.IO + SupervisorJob())
 
     val connectionStatus: StateFlow<ObdConnectionStatus>
         get() = ObdTelemetryService.instance?.connectionStatus ?: _fallbackStatus
@@ -37,12 +32,20 @@ class RealObdManager(private val context: Context) {
     val isMilActive: StateFlow<Boolean>
         get() = ObdTelemetryService.instance?.isMilActive ?: _fallbackMil
 
+    val lastErrorReason: StateFlow<String?>
+        get() = ObdTelemetryService.instance?.connectionManager?.lastErrorReason ?: _fallbackError
+
+    val isBleScanning: StateFlow<Boolean>
+        get() = ObdTelemetryService.instance?.connectionManager?.isBleScanning ?: _fallbackScanning
+
     private val _fallbackStatus = MutableStateFlow(ObdConnectionStatus.DISCONNECTED)
     private val _fallbackDeviceName = MutableStateFlow("Disconnected")
     private val _fallbackMetrics = MutableStateFlow(ParsedObdMetrics())
     private val _fallbackLogs = MutableStateFlow(listOf("OBD-II subsystem initialized"))
     private val _fallbackDtc = MutableStateFlow<List<String>>(emptyList())
     private val _fallbackMil = MutableStateFlow(false)
+    private val _fallbackError = MutableStateFlow<String?>(null)
+    private val _fallbackScanning = MutableStateFlow(false)
 
     private val _discoveredDevices = MutableStateFlow<List<ObdAdapterDevice>>(emptyList())
     val discoveredDevices: StateFlow<List<ObdAdapterDevice>> = _discoveredDevices.asStateFlow()
@@ -57,24 +60,35 @@ class RealObdManager(private val context: Context) {
     }
 
     @SuppressLint("MissingPermission")
-    fun refreshDevices() {
+    fun refreshDevices(triggerBleScan: Boolean = false) {
         val list = mutableListOf<ObdAdapterDevice>()
 
-        // 1. Real Bluetooth Paired Devices
+        if (triggerBleScan) {
+            ObdTelemetryService.instance?.connectionManager?.startBleScan()
+        }
+
+        // 1. Real Bluetooth Paired Devices (distinguishing Classic SPP vs BLE GATT)
         try {
             bluetoothAdapter?.bondedDevices?.forEach { device ->
                 val name = device.name ?: "Bluetooth Device"
-                val isObd = ObdBluetoothConnectionManager.OBD_NAME_KEYWORDS.any { name.lowercase().contains(it) }
+                val isObd = ObdBluetoothConnectionManager.OBD_NAME_KEYWORDS.any {
+                    name.lowercase().contains(it)
+                }
+                val isBle = device.type == BluetoothDevice.DEVICE_TYPE_LE
 
                 list.add(
                     ObdAdapterDevice(
                         id = device.address,
                         name = name,
                         address = device.address,
-                        type = if (device.type == android.bluetooth.BluetoothDevice.DEVICE_TYPE_LE)
-                            ObdConnectionType.BLUETOOTH_BLE else ObdConnectionType.BLUETOOTH_CLASSIC,
+                        type = if (isBle) ObdConnectionType.BLUETOOTH_BLE else ObdConnectionType.BLUETOOTH_CLASSIC,
                         isPaired = true,
-                        protocol = if (isObd) "SAE J1979 / CAN" else "Standard Bluetooth",
+                        protocol = when {
+                            isBle && isObd -> "BLE GATT ELM327 (FFF0/FFE0/NUS)"
+                            isBle -> "BLE Peripheral (Non-OBD)"
+                            isObd -> "SAE J1979 / Classic SPP"
+                            else -> "Bluetooth Classic (Non-OBD)"
+                        },
                         isRealHardware = true
                     )
                 )
@@ -95,15 +109,20 @@ class RealObdManager(private val context: Context) {
         }
     }
 
+    fun startBleDiscovery() {
+        ObdTelemetryService.instance?.connectionManager?.startBleScan()
+    }
+
+    fun stopBleDiscovery() {
+        ObdTelemetryService.instance?.connectionManager?.stopBleScan()
+    }
+
     fun autoConnectIfAvailable() {
-        ObdTelemetryService.instance?.autoConnectIfPaired()
+        ObdTelemetryService.instance?.autoConnectIfPaired(forceClearUserDisconnect = true)
     }
 
     fun connect(adapterDevice: ObdAdapterDevice) {
-        val service = ObdTelemetryService.instance
-        if (service != null) {
-            service.connect(adapterDevice)
-        }
+        ObdTelemetryService.instance?.connect(adapterDevice, isAutoConnect = false)
     }
 
     fun disconnect() {

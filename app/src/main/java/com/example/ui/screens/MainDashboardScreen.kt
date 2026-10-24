@@ -88,12 +88,17 @@ fun MainDashboardScreen(
     var currentTimeString by remember { mutableStateOf("") }
     var isBannerDismissed by remember { mutableStateOf(false) }
 
-    LaunchedEffect(settings.is24HourClock) {
+    val timeFormat = remember(settings.is24HourClock) {
+        if (settings.is24HourClock) SimpleDateFormat("HH:mm", Locale.getDefault())
+        else SimpleDateFormat("hh:mm a", Locale.getDefault())
+    }
+
+    LaunchedEffect(timeFormat) {
         while (true) {
-            val now = Date()
-            val format = if (settings.is24HourClock) SimpleDateFormat("HH:mm", Locale.getDefault()) else SimpleDateFormat("hh:mm a", Locale.getDefault())
-            currentTimeString = format.format(now)
-            delay(1000)
+            val nowMs = System.currentTimeMillis()
+            currentTimeString = timeFormat.format(Date(nowMs))
+            val delayToNextMinute = (60_000L - (nowMs % 60_000L)).coerceIn(1_000L, 60_000L)
+            delay(delayToNextMinute)
         }
     }
 

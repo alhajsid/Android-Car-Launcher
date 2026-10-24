@@ -7,26 +7,32 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
-import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Bluetooth
+import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.Close
-import androidx.compose.material.icons.filled.Shop
-import androidx.compose.material.icons.filled.Usb
+import androidx.compose.material.icons.filled.DirectionsCar
+import androidx.compose.material.icons.filled.Launch
+import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -35,12 +41,15 @@ import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
 import com.example.R
+import com.example.model.AppCategory
+import com.example.model.AppShortcut
 import com.example.ui.theme.BmwCyan
+import com.example.ui.theme.BmwOptimalGreen
 import com.example.ui.theme.CockpitSurfaceLowest
 import com.example.ui.theme.GlassCardBorder
 import com.example.ui.theme.TextDark
@@ -55,14 +64,31 @@ enum class ProjectionType {
 @Composable
 fun PhoneProjectionDialog(
     type: ProjectionType,
+    installedApps: List<AppShortcut> = emptyList(),
+    currentBoundComponent: String = "",
+    onSelectAndLaunchApp: (AppShortcut) -> Unit = {},
     onDismiss: () -> Unit,
     onOpenBluetooth: () -> Unit,
-    onOpenPlayStore: () -> Unit
+    onOpenConnectionSettings: () -> Unit = {}
 ) {
     val isCarPlay = type == ProjectionType.CARPLAY
     val title = if (isCarPlay) "Apple CarPlay" else "Android Auto"
     val accentColor = if (isCarPlay) Color.White else BmwCyan
     val iconRes = if (isCarPlay) R.drawable.ic_carplay else R.drawable.ic_android_auto
+
+    val selectableApps = remember(installedApps) {
+        installedApps
+            .filter { it.isCustomInstalled && it.id != "carplay" && it.id != "android_auto" }
+            .sortedWith(
+                compareByDescending<AppShortcut> {
+                    it.category == AppCategory.COMMUNICATION ||
+                    it.name.contains("link", ignoreCase = true) ||
+                    it.name.contains("auto", ignoreCase = true) ||
+                    it.name.contains("car", ignoreCase = true) ||
+                    it.name.contains("play", ignoreCase = true)
+                }.thenBy { it.name.lowercase() }
+            )
+    }
 
     Dialog(onDismissRequest = onDismiss) {
         Box(
@@ -112,7 +138,7 @@ fun PhoneProjectionDialog(
                                 color = TextPrimaryWhite
                             )
                             Text(
-                                text = "Phone Projection & In-Dash Link",
+                                text = "Select Installed Head-Unit App to Open Directly",
                                 fontFamily = FontFamily.SansSerif,
                                 fontSize = 11.sp,
                                 color = TextSecondaryGrey
@@ -133,57 +159,121 @@ fun PhoneProjectionDialog(
                     }
                 }
 
-                Spacer(modifier = Modifier.height(16.dp))
+                Spacer(modifier = Modifier.height(12.dp))
 
-                // Connection Status Card
-                Box(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .clip(RoundedCornerShape(16.dp))
-                        .background(Color(0x1AFFFFFF))
-                        .border(1.dp, Color(0x26FFFFFF), RoundedCornerShape(16.dp))
-                        .padding(14.dp)
-                ) {
-                    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                        Row(verticalAlignment = Alignment.CenterVertically) {
-                            Icon(
-                                imageVector = Icons.Default.Usb,
-                                contentDescription = null,
-                                tint = accentColor,
-                                modifier = Modifier.size(20.dp)
-                            )
-                            Spacer(modifier = Modifier.width(8.dp))
-                            Text(
-                                text = if (isCarPlay) "Connect iPhone via USB or Wireless Dongle" else "Connect Phone via USB or Wireless",
-                                fontFamily = FontFamily.SansSerif,
-                                fontWeight = FontWeight.Bold,
-                                fontSize = 13.sp,
-                                color = TextPrimaryWhite
-                            )
-                        }
+                if (selectableApps.isNotEmpty()) {
+                    Text(
+                        text = "Tap your head unit's $title app below to open it immediately and save it for one-tap launch:",
+                        fontFamily = FontFamily.SansSerif,
+                        fontSize = 12.sp,
+                        color = TextSecondaryGrey,
+                        modifier = Modifier.fillMaxWidth()
+                    )
 
-                        Text(
-                            text = if (isCarPlay) {
-                                "Plug your iPhone into the head unit's primary USB port with an MFi Lightning / USB-C cable, or pair with your in-dash ZLink, AutoKit, or CarlinKit adapter."
+                    Spacer(modifier = Modifier.height(8.dp))
+
+                    LazyColumn(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .heightIn(max = 220.dp)
+                            .clip(RoundedCornerShape(14.dp))
+                            .background(Color(0x14FFFFFF))
+                            .border(1.dp, Color(0x22FFFFFF), RoundedCornerShape(14.dp)),
+                        contentPadding = PaddingValues(8.dp),
+                        verticalArrangement = Arrangement.spacedBy(6.dp)
+                    ) {
+                        items(selectableApps, key = { it.id }) { app ->
+                            val componentKey = if (!app.activityName.isNullOrBlank()) {
+                                "${app.packageName}/${app.activityName}"
                             } else {
-                                "Connect your Android phone using a high-speed USB data cable or ensure wireless Android Auto projection is enabled in your phone's Wi-Fi & Bluetooth settings."
-                            },
+                                app.packageName
+                            }
+                            val isSelected = currentBoundComponent == componentKey || currentBoundComponent == app.packageName
+
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .clip(RoundedCornerShape(10.dp))
+                                    .background(if (isSelected) Color(0x334CC2FF) else Color(0x1AFFFFFF))
+                                    .border(
+                                        1.dp,
+                                        if (isSelected) BmwCyan else Color(0x1FFFFFFF),
+                                        RoundedCornerShape(10.dp)
+                                    )
+                                    .clickable { onSelectAndLaunchApp(app) }
+                                    .padding(horizontal = 12.dp, vertical = 10.dp),
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.SpaceBetween
+                            ) {
+                                Row(
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    modifier = Modifier.weight(1f)
+                                ) {
+                                    Icon(
+                                        imageVector = Icons.Default.DirectionsCar,
+                                        contentDescription = null,
+                                        tint = accentColor,
+                                        modifier = Modifier.size(20.dp)
+                                    )
+                                    Spacer(modifier = Modifier.width(10.dp))
+                                    Column {
+                                        Text(
+                                            text = app.name,
+                                            fontFamily = FontFamily.SansSerif,
+                                            fontWeight = FontWeight.Bold,
+                                            fontSize = 13.sp,
+                                            color = TextPrimaryWhite,
+                                            maxLines = 1,
+                                            overflow = TextOverflow.Ellipsis
+                                        )
+                                        Text(
+                                            text = app.packageName,
+                                            fontFamily = FontFamily.SansSerif,
+                                            fontSize = 10.sp,
+                                            color = TextSecondaryGrey,
+                                            maxLines = 1,
+                                            overflow = TextOverflow.Ellipsis
+                                        )
+                                    }
+                                }
+
+                                Icon(
+                                    imageVector = if (isSelected) Icons.Default.CheckCircle else Icons.Default.Launch,
+                                    contentDescription = "Launch",
+                                    tint = if (isSelected) BmwOptimalGreen else accentColor,
+                                    modifier = Modifier.size(18.dp)
+                                )
+                            }
+                        }
+                    }
+
+                    Spacer(modifier = Modifier.height(14.dp))
+                } else {
+                    Box(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clip(RoundedCornerShape(16.dp))
+                            .background(Color(0x1AFFFFFF))
+                            .border(1.dp, Color(0x26FFFFFF), RoundedCornerShape(16.dp))
+                            .padding(14.dp)
+                    ) {
+                        Text(
+                            text = "Connect your phone via USB or Bluetooth/Wi-Fi, or open system connection settings below.",
                             fontFamily = FontFamily.SansSerif,
                             fontSize = 12.sp,
                             color = TextSecondaryGrey,
                             lineHeight = 16.sp
                         )
                     }
+
+                    Spacer(modifier = Modifier.height(14.dp))
                 }
 
-                Spacer(modifier = Modifier.height(16.dp))
-
-                // Action Buttons
+                // Action Buttons (Bluetooth & System Connection Settings - NEVER Play Store)
                 Row(
                     modifier = Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.spacedBy(10.dp)
                 ) {
-                    // Open Bluetooth Settings
                     Button(
                         onClick = onOpenBluetooth,
                         colors = ButtonDefaults.buttonColors(containerColor = Color(0x334CC2FF)),
@@ -208,9 +298,8 @@ fun PhoneProjectionDialog(
                         )
                     }
 
-                    // Open Play Store
                     Button(
-                        onClick = onOpenPlayStore,
+                        onClick = onOpenConnectionSettings,
                         colors = ButtonDefaults.buttonColors(containerColor = if (isCarPlay) Color.White else BmwCyan),
                         shape = RoundedCornerShape(12.dp),
                         modifier = Modifier
@@ -218,14 +307,14 @@ fun PhoneProjectionDialog(
                             .height(44.dp)
                     ) {
                         Icon(
-                            imageVector = Icons.Default.Shop,
+                            imageVector = Icons.Default.Settings,
                             contentDescription = null,
                             tint = TextDark,
                             modifier = Modifier.size(18.dp)
                         )
                         Spacer(modifier = Modifier.width(6.dp))
                         Text(
-                            text = if (isCarPlay) "LINK APPS" else "GET AUTO",
+                            text = "DEVICE LINK",
                             fontFamily = FontFamily.SansSerif,
                             fontWeight = FontWeight.Black,
                             fontSize = 12.sp,

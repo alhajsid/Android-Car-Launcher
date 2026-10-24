@@ -22,5 +22,6 @@ data class AppShortcut(
     val isPinnedToDock: Boolean = false,
     val isFavorite: Boolean = false,
     val isCustomInstalled: Boolean = true,
-    val iconDrawable: Drawable? = null
+    val iconDrawable: Drawable? = null,
+    val activityName: String? = null
 )

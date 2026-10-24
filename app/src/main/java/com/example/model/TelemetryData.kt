@@ -13,6 +13,7 @@ data class TelemetryData(
     val engLoadPercent: Int = 0,
     val intakeAirTemp: Int = 0,
     val throttlePercent: Int = 0,
+    val mapKpa: Int? = null,
     val turboBoostBar: Float = 0f,
     val mafFlowGs: Float = 0f,
     val fuelLevelPercent: Int? = null,

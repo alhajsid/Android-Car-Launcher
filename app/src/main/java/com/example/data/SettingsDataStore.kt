@@ -41,6 +41,8 @@ class SettingsDataStore(private val context: Context) {
         val GEAR_RATIOS = stringPreferencesKey("gear_ratios_csv")
         val FAVORITE_PACKAGES = stringSetPreferencesKey("favorite_packages")
         val HIDDEN_PACKAGES = stringSetPreferencesKey("hidden_packages")
+        val CUSTOM_CARPLAY_COMPONENT = stringPreferencesKey("custom_carplay_component")
+        val CUSTOM_ANDROID_AUTO_COMPONENT = stringPreferencesKey("custom_android_auto_component")
     }
 
     val userSettingsFlow: Flow<UserSettings> = context.dataStore.data
@@ -89,7 +91,9 @@ class SettingsDataStore(private val context: Context) {
                 isSimulatingTelemetry = prefs[PreferencesKeys.IS_SIMULATING] ?: false,
                 gearRatios = ratiosMap,
                 favoritePackages = prefs[PreferencesKeys.FAVORITE_PACKAGES] ?: emptySet(),
-                hiddenPackages = prefs[PreferencesKeys.HIDDEN_PACKAGES] ?: emptySet()
+                hiddenPackages = prefs[PreferencesKeys.HIDDEN_PACKAGES] ?: emptySet(),
+                customCarPlayComponent = prefs[PreferencesKeys.CUSTOM_CARPLAY_COMPONENT] ?: "",
+                customAndroidAutoComponent = prefs[PreferencesKeys.CUSTOM_ANDROID_AUTO_COMPONENT] ?: ""
             )
         }
 
@@ -110,6 +114,8 @@ class SettingsDataStore(private val context: Context) {
             prefs[PreferencesKeys.GEAR_RATIOS] = serializeGearRatios(settings.gearRatios)
             prefs[PreferencesKeys.FAVORITE_PACKAGES] = settings.favoritePackages
             prefs[PreferencesKeys.HIDDEN_PACKAGES] = settings.hiddenPackages
+            prefs[PreferencesKeys.CUSTOM_CARPLAY_COMPONENT] = settings.customCarPlayComponent
+            prefs[PreferencesKeys.CUSTOM_ANDROID_AUTO_COMPONENT] = settings.customAndroidAutoComponent
         }
     }
 

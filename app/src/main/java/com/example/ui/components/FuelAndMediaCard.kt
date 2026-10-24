@@ -83,14 +83,20 @@ fun FuelAndMediaCard(
     var currentTimeString by remember { mutableStateOf("") }
     var currentDateString by remember { mutableStateOf("") }
 
-    LaunchedEffect(is24Hour) {
+    val timeFormat = remember(is24Hour) {
+        if (is24Hour) SimpleDateFormat("HH:mm", Locale.getDefault())
+        else SimpleDateFormat("hh:mm a", Locale.getDefault())
+    }
+    val dateFormat = remember { SimpleDateFormat("EEE d MMM", Locale.getDefault()) }
+
+    LaunchedEffect(timeFormat) {
         while (true) {
-            val now = Date()
-            val timeFormat = if (is24Hour) SimpleDateFormat("HH:mm", Locale.getDefault()) else SimpleDateFormat("hh:mm a", Locale.getDefault())
-            val dateFormat = SimpleDateFormat("EEE d MMM", Locale.getDefault())
+            val nowMs = System.currentTimeMillis()
+            val now = Date(nowMs)
             currentTimeString = timeFormat.format(now)
             currentDateString = dateFormat.format(now)
-            delay(1000)
+            val delayToNextMinute = (60_000L - (nowMs % 60_000L)).coerceIn(1_000L, 60_000L)
+            delay(delayToNextMinute)
         }
     }
 

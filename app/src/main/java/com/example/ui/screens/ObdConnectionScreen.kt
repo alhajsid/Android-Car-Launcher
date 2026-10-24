@@ -439,12 +439,18 @@ fun ObdConnectionScreen(
                                     }
 
                                     // Clear DTC Button
-                                    if (telemetry.dtcCodes.isNotEmpty()) {
+                                    if (telemetry.dtcCodes.isNotEmpty() || telemetry.isMilActive) {
                                         Button(
                                             onClick = {
                                                 scope.launch {
-                                                    val success = onClearDtc()
-                                                    dtcStatusMessage = if (success) "Codes cleared" else "Failed to clear"
+                                                    val accepted = onClearDtc()
+                                                    dtcStatusMessage = if (!accepted) {
+                                                        "Clear rejected: ECU did not acknowledge Mode 04"
+                                                    } else if (telemetry.dtcCodes.isEmpty() && !telemetry.isMilActive) {
+                                                        "Mode 04 accepted — ECU confirmed 0 active fault codes"
+                                                    } else {
+                                                        "Mode 04 accepted by ECU — permanent/active fault(s) still present"
+                                                    }
                                                 }
                                             },
                                             colors = ButtonDefaults.buttonColors(containerColor = BmwCrimson.copy(alpha = 0.3f)),
@@ -452,7 +458,7 @@ fun ObdConnectionScreen(
                                         ) {
                                             Icon(imageVector = Icons.Default.Delete, contentDescription = null, tint = BmwCrimson, modifier = Modifier.size(12.dp))
                                             Spacer(modifier = Modifier.width(3.dp))
-                                            Text("CLEAR", fontSize = 9.sp, color = BmwCrimson, fontWeight = FontWeight.Bold)
+                                            Text("CLEAR (MODE 04)", fontSize = 9.sp, color = BmwCrimson, fontWeight = FontWeight.Bold)
                                         }
                                     }
                                 }

@@ -3,6 +3,7 @@ package com.example.ui.screens
 import android.content.res.Configuration
 import android.graphics.Bitmap
 import android.graphics.drawable.Drawable
+import android.util.LruCache
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
@@ -59,6 +60,7 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
@@ -67,6 +69,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.graphics.vector.ImageVector
@@ -92,7 +95,46 @@ import com.example.ui.theme.TextDark
 import com.example.ui.theme.TextMuted
 import com.example.ui.theme.TextPrimaryWhite
 import com.example.ui.theme.TextSecondaryGrey
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
+
+/**
+ * Bounded in-memory LRU cache for rasterized app launcher icons (96x96 max).
+ * Prevents repeated Bitmap allocations and main-thread Drawable rasterization during grid scrolling
+ * on 2 GB RAM head units.
+ */
+private object AppIconBitmapCache {
+    private const val MAX_ICON_PX = 96
+    private val cache = object : LruCache<String, ImageBitmap>(128) {}
+
+    fun get(key: String): ImageBitmap? = synchronized(cache) { cache.get(key) }
+
+    fun getOrRasterize(key: String, drawable: Drawable): ImageBitmap? {
+        synchronized(cache) {
+            cache.get(key)?.let { return it }
+        }
+        return try {
+            val rawW = drawable.intrinsicWidth.takeIf { it > 0 } ?: MAX_ICON_PX
+            val rawH = drawable.intrinsicHeight.takeIf { it > 0 } ?: MAX_ICON_PX
+            val w = rawW.coerceAtMost(MAX_ICON_PX)
+            val h = rawH.coerceAtMost(MAX_ICON_PX)
+            val bmp = Bitmap.createBitmap(w, h, Bitmap.Config.ARGB_8888)
+            val canvas = android.graphics.Canvas(bmp)
+            synchronized(drawable) {
+                drawable.setBounds(0, 0, canvas.width, canvas.height)
+                drawable.draw(canvas)
+            }
+            val img = bmp.asImageBitmap()
+            synchronized(cache) {
+                cache.put(key, img)
+            }
+            img
+        } catch (_: Exception) {
+            null
+        }
+    }
+}
 
 /**
  * High-performance full-screen automotive app launcher drawer.
@@ -130,7 +172,7 @@ fun AllAppsScreen(
     val filteredApps = remember(apps, selectedCategory, searchQuery, settings.favoritePackages, settings.hiddenPackages) {
         apps.filter { app ->
             if (settings.hiddenPackages.contains(app.packageName)) return@filter false
-            val isFav = settings.favoritePackages.contains(app.packageName)
+            val isFav = settings.favoritePackages.contains(app.packageName) || app.isFavorite
             val matchCat = when (selectedCategory) {
                 AppCategory.ALL -> true
                 AppCategory.FAVORITES -> isFav
@@ -138,6 +180,19 @@ fun AllAppsScreen(
             }
             val matchQuery = searchQuery.isBlank() || app.name.contains(searchQuery, ignoreCase = true)
             matchCat && matchQuery
+        }
+    }
+
+    val categoryCounts = remember(apps, settings.favoritePackages, settings.hiddenPackages) {
+        val visible = apps.filterNot { settings.hiddenPackages.contains(it.packageName) }
+        AppCategory.values().associateWith { category ->
+            when (category) {
+                AppCategory.ALL -> visible.size
+                AppCategory.FAVORITES -> visible.count {
+                    settings.favoritePackages.contains(it.packageName) || it.isFavorite
+                }
+                else -> visible.count { it.category == category }
+            }
         }
     }
 
@@ -335,9 +390,7 @@ fun AllAppsScreen(
             ) {
                 AppCategory.values().forEach { category ->
                     val isSelected = (category == selectedCategory)
-                    val count = if (category == AppCategory.ALL) apps.size else apps.count {
-                        if (category == AppCategory.FAVORITES) it.isFavorite else it.category == category
-                    }
+                    val count = categoryCounts[category] ?: 0
                     Box(
                         modifier = Modifier
                             .clip(RoundedCornerShape(10.dp))
@@ -382,13 +435,22 @@ fun AllAppsScreen(
                 horizontalArrangement = Arrangement.spacedBy(12.dp),
                 verticalArrangement = Arrangement.spacedBy(14.dp)
             ) {
-                items(filteredApps, key = { it.id }) { app ->
+                items(
+                    items = filteredApps,
+                    key = { it.id },
+                    contentType = { "app_tile" }
+                ) { app ->
                     val isFav = settings.favoritePackages.contains(app.packageName)
                     AppLauncherTile(
                         app = app,
                         isFavorite = isFav,
                         onClick = {
-                            onLaunchApp(app.packageName)
+                            val launchTarget = if (!app.activityName.isNullOrBlank()) {
+                                "${app.packageName}/${app.activityName}"
+                            } else {
+                                app.packageName
+                            }
+                            onLaunchApp(launchTarget)
                             scope.launch {
                                 snackbarHostState.showSnackbar("Opening ${app.name}...")
                             }
@@ -417,6 +479,15 @@ private fun AppLauncherTile(
     onClick: () -> Unit,
     onToggleFavorite: () -> Unit
 ) {
+    val tileBrush = remember(app.accentColor) {
+        Brush.linearGradient(
+            colors = listOf(
+                app.accentColor.copy(alpha = 0.28f),
+                Color(0xFF0F172A).copy(alpha = 0.90f)
+            )
+        )
+    }
+
     Column(
         modifier = Modifier
             .fillMaxWidth()
@@ -430,14 +501,7 @@ private fun AppLauncherTile(
             modifier = Modifier
                 .size(68.dp)
                 .clip(RoundedCornerShape(20.dp))
-                .background(
-                    Brush.linearGradient(
-                        colors = listOf(
-                            app.accentColor.copy(alpha = 0.28f),
-                            Color(0xFF0F172A).copy(alpha = 0.90f)
-                        )
-                    )
-                )
+                .background(tileBrush)
                 .border(1.5.dp, app.accentColor.copy(alpha = 0.55f), RoundedCornerShape(20.dp)),
             contentAlignment = Alignment.Center
         ) {
@@ -458,6 +522,7 @@ private fun AppLauncherTile(
                 }
                 app.iconDrawable != null -> {
                     AppRealDrawableIcon(
+                        cacheKey = app.id,
                         drawable = app.iconDrawable,
                         modifier = Modifier.size(44.dp)
                     )
@@ -513,26 +578,23 @@ private fun AppLauncherTile(
 
 @Composable
 private fun AppRealDrawableIcon(
+    cacheKey: String,
     drawable: Drawable,
     modifier: Modifier = Modifier
 ) {
-    val bitmap = remember(drawable) {
-        try {
-            val width = drawable.intrinsicWidth.takeIf { it > 0 } ?: 96
-            val height = drawable.intrinsicHeight.takeIf { it > 0 } ?: 96
-            val bmp = Bitmap.createBitmap(width, height, Bitmap.Config.ARGB_8888)
-            val canvas = android.graphics.Canvas(bmp)
-            drawable.setBounds(0, 0, canvas.width, canvas.height)
-            drawable.draw(canvas)
-            bmp.asImageBitmap()
-        } catch (_: Exception) {
-            null
+    val cachedImmediate = remember(cacheKey) { AppIconBitmapCache.get(cacheKey) }
+    val bitmap by produceState<ImageBitmap?>(initialValue = cachedImmediate, key1 = cacheKey, key2 = drawable) {
+        if (value == null) {
+            value = withContext(Dispatchers.Default) {
+                AppIconBitmapCache.getOrRasterize(cacheKey, drawable)
+            }
         }
     }
 
-    if (bitmap != null) {
+    val currentBitmap = bitmap
+    if (currentBitmap != null) {
         Image(
-            bitmap = bitmap,
+            bitmap = currentBitmap,
             contentDescription = null,
             modifier = modifier
         )

@@ -15,23 +15,33 @@ import android.content.pm.ServiceInfo
 import android.os.Binder
 import android.os.Build
 import android.os.IBinder
+import android.os.SystemClock
 import android.util.Log
 import androidx.core.app.NotificationCompat
 import com.example.MainActivity
 import com.example.R
 import com.example.model.ObdAdapterDevice
 import com.example.model.ObdConnectionStatus
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.cancel
+import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import java.text.SimpleDateFormat
+import java.util.ArrayDeque
+import java.util.Date
+import java.util.Locale
+import kotlin.math.abs
 
 /**
  * Foreground Android Service for OBD2 ELM327 vehicle communications.
@@ -43,9 +53,19 @@ class ObdTelemetryService : Service() {
         private const val TAG = "ObdTelemetryService"
         private const val NOTIFICATION_ID = 4099
         private const val CHANNEL_ID = "obd_telemetry_channel"
+        private const val PREFS_NAME = "vision_obd_service_prefs"
+        private const val KEY_SAVED_ADAPTER_ADDRESS = "saved_adapter_address"
+        private const val KEY_USER_DISCONNECTED = "user_explicitly_disconnected"
+        private const val MAX_LOG_ENTRIES = 35
 
-        var instance: ObdTelemetryService? = null
-            private set
+        private val _instanceFlow = MutableStateFlow<ObdTelemetryService?>(null)
+        val instanceFlow: StateFlow<ObdTelemetryService?> = _instanceFlow.asStateFlow()
+
+        var instance: ObdTelemetryService?
+            get() = _instanceFlow.value
+            private set(value) {
+                _instanceFlow.value = value
+            }
     }
 
     private val binder = LocalBinder()
@@ -56,7 +76,18 @@ class ObdTelemetryService : Service() {
 
     private var pollingJob: Job? = null
     private var reconnectJob: Job? = null
+    private var autoConnectJob: Job? = null
     private var isReceiverRegistered = false
+
+    @Volatile
+    private var userExplicitlyDisconnected: Boolean = false
+
+    @Volatile
+    var isVerboseLoggingEnabled: Boolean = false
+
+    private val logLock = Any()
+    private val logQueue = ArrayDeque<String>(MAX_LOG_ENTRIES + 2)
+    private val logTimeFormat = SimpleDateFormat("HH:mm:ss.SSS", Locale.US)
 
     private val _telemetryState = MutableStateFlow(ParsedObdMetrics())
     val telemetryState: StateFlow<ParsedObdMetrics> = _telemetryState.asStateFlow()
@@ -86,17 +117,38 @@ class ObdTelemetryService : Service() {
 
     override fun onCreate() {
         super.onCreate()
-        instance = this
+        logQueue.addLast("OBD-II CAN Telemetry Service initialized.")
         connectionManager = ObdBluetoothConnectionManager(applicationContext)
+        userExplicitlyDisconnected = getPrefs().getBoolean(KEY_USER_DISCONNECTED, false)
+        instance = this
 
         startForegroundNotification()
         registerBluetoothReceiver()
-        autoConnectIfPaired()
+        if (!userExplicitlyDisconnected) {
+            autoConnectIfPaired()
+        } else {
+            addLog("Auto-connect paused (previous manual disconnect respected).")
+        }
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         startForegroundNotification()
         return START_STICKY
+    }
+
+    private fun getPrefs() = applicationContext.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+
+    private fun getSavedAdapterAddress(): String? =
+        getPrefs().getString(KEY_SAVED_ADAPTER_ADDRESS, null)
+
+    private fun saveAdapterPreference(address: String?, userDisconnected: Boolean) {
+        getPrefs().edit().apply {
+            if (address != null) {
+                putString(KEY_SAVED_ADAPTER_ADDRESS, address)
+            }
+            putBoolean(KEY_USER_DISCONNECTED, userDisconnected)
+            apply()
+        }
     }
 
     private fun startForegroundNotification() {
@@ -149,10 +201,24 @@ class ObdTelemetryService : Service() {
         }
     }
 
-    private fun addLog(entry: String) {
-        val timestamp = java.text.SimpleDateFormat("HH:mm:ss.SSS", java.util.Locale.US).format(java.util.Date())
-        _diagnosticLogs.value = (_diagnosticLogs.value + "[$timestamp] $entry").takeLast(35)
-        Log.d(TAG, entry)
+    /**
+     * Bounded, low-allocation diagnostic log ring buffer.
+     * High-frequency verbose logs are skipped unless [isVerboseLoggingEnabled] is enabled.
+     */
+    private fun addLog(entry: String, verboseOnly: Boolean = false) {
+        if (verboseOnly && !isVerboseLoggingEnabled) return
+        val snapshot = synchronized(logLock) {
+            val timestamp = logTimeFormat.format(Date())
+            if (logQueue.size >= MAX_LOG_ENTRIES) {
+                logQueue.removeFirst()
+            }
+            logQueue.addLast("[$timestamp] $entry")
+            logQueue.toList()
+        }
+        _diagnosticLogs.value = snapshot
+        if (!verboseOnly) {
+            Log.d(TAG, entry)
+        }
     }
 
     private fun registerBluetoothReceiver() {
@@ -182,17 +248,23 @@ class ObdTelemetryService : Service() {
                     val bondState = intent.getIntExtra(BluetoothDevice.EXTRA_BOND_STATE, BluetoothDevice.ERROR)
                     if (bondState == BluetoothDevice.BOND_BONDED && device != null) {
                         addLog("New Bluetooth device paired: ${device.name ?: device.address}")
-                        if (connectionManager.isLikelyObdAdapter(device.name)) {
+                        if (!userExplicitlyDisconnected && connectionManager.isLikelyObdAdapter(device.name)) {
                             autoConnectIfPaired()
                         }
                     }
                 }
                 BluetoothDevice.ACTION_ACL_CONNECTED -> {
                     val device = intent.getParcelableExtra<BluetoothDevice>(BluetoothDevice.EXTRA_DEVICE)
-                    if (device != null && connectionManager.isLikelyObdAdapter(device.name)) {
+                    val savedAddr = getSavedAdapterAddress()
+                    val isKnownAdapter = device != null && (
+                        device.address == savedAddr || connectionManager.isLikelyObdAdapter(device.name)
+                    )
+                    if (isKnownAdapter && !userExplicitlyDisconnected) {
                         if (_connectionStatus.value != ObdConnectionStatus.CONNECTED &&
-                            _connectionStatus.value != ObdConnectionStatus.CONNECTING) {
-                            addLog("OBD adapter link detected (${device.name}). Auto-linking CAN...")
+                            _connectionStatus.value != ObdConnectionStatus.CONNECTING &&
+                            _connectionStatus.value != ObdConnectionStatus.INITIALIZING_ELM
+                        ) {
+                            addLog("OBD adapter link detected (${device?.name}). Auto-linking CAN...")
                             autoConnectIfPaired()
                         }
                     }
@@ -201,12 +273,14 @@ class ObdTelemetryService : Service() {
                     val device = intent.getParcelableExtra<BluetoothDevice>(BluetoothDevice.EXTRA_DEVICE)
                     if (device != null && device.address == connectionManager.activeDevice.value?.address) {
                         addLog("Vehicle link disconnected: ${device.name}")
-                        handleConnectionLost()
+                        if (!userExplicitlyDisconnected) {
+                            handleConnectionLost()
+                        }
                     }
                 }
                 BluetoothAdapter.ACTION_STATE_CHANGED -> {
                     val state = intent.getIntExtra(BluetoothAdapter.EXTRA_STATE, BluetoothAdapter.ERROR)
-                    if (state == BluetoothAdapter.STATE_ON) {
+                    if (state == BluetoothAdapter.STATE_ON && !userExplicitlyDisconnected) {
                         autoConnectIfPaired()
                     }
                 }
@@ -214,30 +288,63 @@ class ObdTelemetryService : Service() {
         }
     }
 
-    fun autoConnectIfPaired() {
-        serviceScope.launch {
-            delay(500)
-            if (_connectionStatus.value == ObdConnectionStatus.CONNECTED ||
-                _connectionStatus.value == ObdConnectionStatus.CONNECTING) {
+    /**
+     * Automatically connects ONLY to an explicitly saved OBD adapter or a confidently identified
+     * OBD adapter by name. Never falls back to unrelated paired Bluetooth devices (such as
+     * headphones, car stereos, or phones), and respects explicit user disconnects.
+     */
+    fun autoConnectIfPaired(forceClearUserDisconnect: Boolean = false) {
+        if (forceClearUserDisconnect) {
+            userExplicitlyDisconnected = false
+            saveAdapterPreference(getSavedAdapterAddress(), false)
+        }
+        if (userExplicitlyDisconnected) {
+            return
+        }
+        if (autoConnectJob?.isActive == true ||
+            _connectionStatus.value == ObdConnectionStatus.CONNECTED ||
+            _connectionStatus.value == ObdConnectionStatus.CONNECTING ||
+            _connectionStatus.value == ObdConnectionStatus.INITIALIZING_ELM
+        ) {
+            return
+        }
+
+        autoConnectJob = serviceScope.launch {
+            delay(400)
+            if (userExplicitlyDisconnected ||
+                _connectionStatus.value == ObdConnectionStatus.CONNECTED ||
+                _connectionStatus.value == ObdConnectionStatus.CONNECTING ||
+                _connectionStatus.value == ObdConnectionStatus.INITIALIZING_ELM
+            ) {
                 return@launch
             }
 
             val pairedDevices = connectionManager.getPairedObdDevices()
-            val candidate = pairedDevices.firstOrNull { connectionManager.isLikelyObdAdapter(it.name) }
-                ?: pairedDevices.firstOrNull()
+            val savedAddress = getSavedAdapterAddress()
+
+            // 1. Prefer explicitly saved adapter if still paired
+            // 2. Otherwise select only a confidently identified OBD adapter
+            val candidate = pairedDevices.firstOrNull { savedAddress != null && it.address == savedAddress }
+                ?: pairedDevices.firstOrNull { connectionManager.isLikelyObdAdapter(it.name) }
 
             if (candidate != null) {
-                addLog("Auto-connecting to vehicle adapter: ${candidate.name} [${candidate.address}]")
-                connect(candidate)
+                addLog("Auto-connecting to OBD adapter: ${candidate.name} [${candidate.address}]")
+                connect(candidate, isAutoConnect = true)
             } else {
-                addLog("No paired ELM327 OBD2 adapter found. Pair in phone Bluetooth settings.")
+                addLog("No recognized OBD-II adapter paired. Please select your adapter in OBD Settings.")
             }
         }
     }
 
-    fun connect(device: ObdAdapterDevice) {
+    fun connect(device: ObdAdapterDevice, isAutoConnect: Boolean = false) {
+        if (!isAutoConnect) {
+            userExplicitlyDisconnected = false
+            saveAdapterPreference(device.address, false)
+        }
+        autoConnectJob?.cancel()
         reconnectJob?.cancel()
         pollingJob?.cancel()
+
         _connectionStatus.value = ObdConnectionStatus.CONNECTING
         _connectedDeviceName.value = device.name
 
@@ -246,190 +353,357 @@ class ObdTelemetryService : Service() {
             val connected = connectionManager.connect(device)
 
             if (!connected) {
-                addLog("Socket connection failed for ${device.name}.")
+                val errReason = connectionManager.lastErrorReason.value
+                addLog(errReason ?: "Connection failed for ${device.name}.")
                 _connectionStatus.value = ObdConnectionStatus.ERROR
-                scheduleReconnection()
+                // Do not endlessly retry if the BLE profile is explicitly unsupported
+                if (errReason == null || !errReason.contains("Unsupported BLE GATT", ignoreCase = true)) {
+                    scheduleReconnection()
+                }
                 return@launch
             }
 
-            _connectionStatus.value = ObdConnectionStatus.INITIALIZING_ELM
-            addLog("Socket linked! Running ELM327 protocol handshake...")
+            // Persist successfully connected adapter
+            saveAdapterPreference(device.address, false)
 
-            // Run standard ELM327 handshake
+            _connectionStatus.value = ObdConnectionStatus.INITIALIZING_ELM
+            addLog("Link established! Running serialized ELM327 handshake...")
+
+            var supportedPidsFrom0100: Set<String> = emptySet()
+
+            // Run standard ELM327 handshake through serialized command executor
             for (cmd in ObdProtocol.INIT_COMMANDS) {
-                if (!isActive) break
-                val resp = connectionManager.sendCommand(cmd, timeoutMs = 1500)
+                currentCoroutineContext().ensureActive()
+                val timeout = if (cmd == "ATZ" || cmd == "0100") 1800L else 1200L
+                val resp = connectionManager.executeCommand(cmd, timeoutMs = timeout)
                 val clean = ObdProtocol.cleanResponse(resp)
                 addLog("TX: $cmd -> RX: $clean")
+                if (cmd == "0100") {
+                    supportedPidsFrom0100 = ObdProtocol.parseSupportedPids0100(resp)
+                }
                 if (cmd == "ATZ") {
-                    delay(800)
+                    delay(650)
                 } else {
-                    delay(60)
+                    delay(45)
                 }
             }
 
-            val protoResp = connectionManager.sendCommand(ObdProtocol.CMD_PROTOCOL, 1000)
-            val protocolName = ObdProtocol.cleanResponse(protoResp).ifEmpty { "ISO 15765-4 CAN" }
-            addLog("CAN Bus Active Protocol: $protocolName")
+            val protoResp = connectionManager.executeCommand(ObdProtocol.CMD_PROTOCOL, 1000)
+            val protocolName = ObdProtocol.cleanResponse(protoResp)
+                .takeIf { it.isNotEmpty() && !ObdProtocol.isErrorOrNoData(it) }
+                ?: "ISO 15765-4 CAN"
+            addLog("CAN Bus Active Protocol: $protocolName (Supported PIDs: ${supportedPidsFrom0100.size})")
 
             _connectionStatus.value = ObdConnectionStatus.CONNECTED
-            addLog("Vehicle ECU Handshake Complete. Starting PID telemetry loop (~3 Hz)...")
+            addLog("Vehicle ECU Handshake Complete. Starting serialized PID telemetry loop...")
 
-            // Initial check for MIL status and fault codes
+            // Initial check for MIL status and fault codes (also serialized)
             scanMilAndDtc()
 
-            startPollingLoop(protocolName)
+            startPollingLoop(protocolName, supportedPidsFrom0100)
         }
     }
 
     private suspend fun scanMilAndDtc() {
-        val milRaw = connectionManager.sendCommand(ObdProtocol.CMD_MIL_STATUS, 500)
+        val milRaw = connectionManager.executeCommand(ObdProtocol.CMD_MIL_STATUS, 700)
         val milParsed = ObdProtocol.parseMilStatus(milRaw)
         if (milParsed != null) {
             _isMilActive.value = milParsed.first
-            if (milParsed.second > 0) {
-                val dtcRaw = connectionManager.sendCommand(ObdProtocol.CMD_READ_DTC, 800)
+            if (milParsed.second > 0 || milParsed.first) {
+                val dtcRaw = connectionManager.executeCommand(ObdProtocol.CMD_READ_DTC, 1000)
                 val codes = ObdProtocol.parseDtcCodes(dtcRaw)
                 _dtcCodes.value = codes
-                addLog("ECU Diagnostics: MIL=${milParsed.first}, Codes: $codes")
+                addLog("ECU Diagnostics: MIL=${milParsed.first}, DTCs=${codes.size} $codes")
             } else {
                 _dtcCodes.value = emptyList()
             }
         }
     }
 
+    /**
+     * Serialized manual DTC scan. Executes atomically via [connectionManager.executeCommand]
+     * so it never collides with live PID polling.
+     */
     suspend fun manualScanDtc(): List<String> = withContext(Dispatchers.IO) {
-        if (!connectionManager.isConnected) return@withContext emptyList()
-        val dtcRaw = connectionManager.sendCommand(ObdProtocol.CMD_READ_DTC, 1000)
+        if (!connectionManager.isConnected) {
+            addLog("Manual DTC Scan aborted: adapter not connected.")
+            return@withContext emptyList()
+        }
+        val milRaw = connectionManager.executeCommand(ObdProtocol.CMD_MIL_STATUS, 800)
+        ObdProtocol.parseMilStatus(milRaw)?.let { (milOn, _) ->
+            _isMilActive.value = milOn
+        }
+        val dtcRaw = connectionManager.executeCommand(ObdProtocol.CMD_READ_DTC, 1200)
+        if (ObdProtocol.isErrorOrNoData(dtcRaw) && !ObdProtocol.cleanResponse(dtcRaw).contains("43")) {
+            addLog("Manual DTC Scan: No stored fault codes or NO DATA (${ObdProtocol.cleanResponse(dtcRaw)}).")
+            _dtcCodes.value = emptyList()
+            return@withContext emptyList()
+        }
         val codes = ObdProtocol.parseDtcCodes(dtcRaw)
         _dtcCodes.value = codes
-        addLog("Manual DTC Scan result: $codes")
+        addLog("Manual DTC Scan complete: ${if (codes.isEmpty()) "0 fault codes" else codes.joinToString()}")
         codes
     }
 
+    /**
+     * Serialized manual DTC clear (OBD Mode 04).
+     * Strictly validates positive Mode 04 acknowledgement ("44") and refreshes MIL/DTC status
+     * from the ECU to confirm actual post-clear state.
+     */
     suspend fun manualClearDtc(): Boolean = withContext(Dispatchers.IO) {
-        if (!connectionManager.isConnected) return@withContext false
-        val resp = connectionManager.sendCommand(ObdProtocol.CMD_CLEAR_DTC, 1200)
-        val success = !resp.contains("ERROR")
-        if (success) {
-            _dtcCodes.value = emptyList()
-            _isMilActive.value = false
-            addLog("ECU trouble codes cleared.")
+        if (!connectionManager.isConnected) {
+            addLog("Clear DTC failed: adapter not connected.")
+            return@withContext false
         }
-        success
+        val resp = connectionManager.executeCommand(ObdProtocol.CMD_CLEAR_DTC, 1800)
+        val clean = ObdProtocol.cleanResponse(resp)
+        val accepted = ObdProtocol.isClearDtcSuccess(resp)
+
+        if (!accepted) {
+            addLog("ECU rejected or failed Mode 04 Clear DTC (RX: ${clean.ifEmpty { "TIMEOUT/EMPTY" }}).")
+            return@withContext false
+        }
+
+        addLog("ECU accepted Mode 04 Clear DTC command (RX: $clean). Verifying MIL/DTC status...")
+        delay(250)
+        scanMilAndDtc()
+
+        val remainingCodes = _dtcCodes.value
+        val milStillOn = _isMilActive.value
+        if (remainingCodes.isEmpty() && !milStillOn) {
+            addLog("Confirmed: ECU fault codes cleared and MIL extinguished.")
+        } else {
+            addLog("Mode 04 accepted, but ECU still reports MIL=$milStillOn, Permanent/Active DTCs=$remainingCodes.")
+        }
+        true
     }
 
     /**
-     * Realistic sequential OBD2 ELM327 PID polling loop (~2 to 4 Hz real transmission rate)
+     * Adaptive, serialized OBD2 ELM327 PID polling loop:
+     * - Prioritizes fast-changing primary telemetry (RPM, Speed) every cycle.
+     * - Polls secondary metrics (Coolant, Load, Throttle, MAP/Boost, MAF, IAT) at staggered intervals.
+     * - Tracks unsupported PIDs (from 0100 bitmask or repeated NO DATA) and skips them to save bus bandwidth.
+     * - Emits StateFlow updates only when values materially change or freshness heartbeat expires.
      */
-    private suspend fun startPollingLoop(protocol: String) {
+    private suspend fun startPollingLoop(
+        protocol: String,
+        initialSupportedPids: Set<String>
+    ) {
         var cycle = 0
-        while (serviceScope.isActive && connectionManager.isConnected) {
-            cycle++
+        val unsupportedPids = mutableSetOf<String>()
+        val noDataCounts = mutableMapOf<String, Int>()
+        var lastEmitTimeMs = 0L
 
-            // Primary loop: RPM and Speed
-            val rpmRaw = connectionManager.sendCommand(ObdProtocol.CMD_RPM, 300)
-            val rpmVal = ObdProtocol.parseRpm(rpmRaw)
-
-            val spdRaw = connectionManager.sendCommand(ObdProtocol.CMD_SPEED, 300)
-            val spdVal = ObdProtocol.parseSpeed(spdRaw)
-
-            // Coolant & Load every 2 cycles
-            var ectVal = _telemetryState.value.coolantTempC
-            var loadVal = _telemetryState.value.engineLoadPercent
-            if (cycle % 2 == 0) {
-                val ectRaw = connectionManager.sendCommand(ObdProtocol.CMD_COOLANT, 350)
-                ectVal = ObdProtocol.parseCoolant(ectRaw) ?: ectVal
-
-                val loadRaw = connectionManager.sendCommand(ObdProtocol.CMD_ENGINE_LOAD, 350)
-                loadVal = ObdProtocol.parseEngineLoad(loadRaw) ?: loadVal
+        suspend fun pollPidIfSupported(pid: String, timeoutMs: Long): String? {
+            if (pid in unsupportedPids) return null
+            // If 0100 returned a valid bitmask, skip Mode 01 PIDs in 0101..0120 that are not advertised
+            if (initialSupportedPids.isNotEmpty() && pid.startsWith("01") && pid != ObdProtocol.CMD_FUEL_LEVEL) {
+                val pidNum = pid.removePrefix("01").toIntOrNull(16)
+                if (pidNum != null && pidNum in 1..0x20 && pid !in initialSupportedPids) {
+                    unsupportedPids.add(pid)
+                    addLog("Skipping PID $pid (not advertised by ECU 0100 bitmask).", verboseOnly = true)
+                    return null
+                }
             }
 
-            // Throttle, MAF, Intake Air every 4 cycles
-            var tpsVal = _telemetryState.value.throttlePercent
-            var iatVal = _telemetryState.value.intakeTempC
-            var mafVal = _telemetryState.value.mafGs
-            var boostVal = _telemetryState.value.turboBoostBar
-            if (cycle % 4 == 0) {
-                val tpsRaw = connectionManager.sendCommand(ObdProtocol.CMD_THROTTLE, 300)
-                tpsVal = ObdProtocol.parseThrottle(tpsRaw) ?: tpsVal
-
-                val mafRaw = connectionManager.sendCommand(ObdProtocol.CMD_MAF, 350)
-                mafVal = ObdProtocol.parseMaf(mafRaw) ?: mafVal
-
-                val mapRaw = connectionManager.sendCommand(ObdProtocol.CMD_MAP_BOOST, 350)
-                boostVal = ObdProtocol.parseBoost(mapRaw) ?: boostVal
-
-                val iatRaw = connectionManager.sendCommand(ObdProtocol.CMD_INTAKE_TEMP, 300)
-                iatVal = ObdProtocol.parseIat(iatRaw) ?: iatVal
+            val raw = connectionManager.executeCommand(pid, timeoutMs)
+            if (ObdProtocol.isNoDataResponse(raw)) {
+                val count = (noDataCounts[pid] ?: 0) + 1
+                noDataCounts[pid] = count
+                // Keep core RPM/Speed probing longer; retire optional PIDs after 3 consecutive NO DATA responses
+                val maxFailures = if (pid == ObdProtocol.CMD_RPM || pid == ObdProtocol.CMD_SPEED) 10 else 3
+                if (count >= maxFailures) {
+                    unsupportedPids.add(pid)
+                    addLog("PID $pid marked unsupported after $count NO DATA responses.")
+                }
+                return null
+            } else if (!ObdProtocol.isErrorOrNoData(raw)) {
+                noDataCounts.remove(pid)
             }
-
-            // Voltage & Fuel Level every 15 cycles (slow-changing metrics)
-            var voltVal = _telemetryState.value.voltage
-            var fuelVal = _telemetryState.value.fuelLevelPercent
-            if (cycle % 15 == 0) {
-                val voltRaw = connectionManager.sendCommand(ObdProtocol.CMD_VOLTAGE, 350)
-                voltVal = ObdProtocol.parseVoltage(voltRaw) ?: voltVal
-
-                val fuelRaw = connectionManager.sendCommand(ObdProtocol.CMD_FUEL_LEVEL, 400)
-                fuelVal = ObdProtocol.parseFuelLevel(fuelRaw) ?: fuelVal
-            }
-
-            _telemetryState.value = ParsedObdMetrics(
-                speedKmh = spdVal ?: _telemetryState.value.speedKmh,
-                rpm = rpmVal ?: _telemetryState.value.rpm,
-                coolantTempC = ectVal ?: _telemetryState.value.coolantTempC,
-                engineLoadPercent = loadVal ?: _telemetryState.value.engineLoadPercent,
-                throttlePercent = tpsVal,
-                intakeTempC = iatVal,
-                mafGs = mafVal,
-                turboBoostBar = boostVal,
-                fuelLevelPercent = fuelVal,
-                voltage = voltVal,
-                protocolName = protocol
-            )
-
-            // Inter-command pause for ELM327 UART buffer settling
-            delay(80)
+            return raw
         }
 
-        if (!connectionManager.isConnected) {
+        try {
+            while (currentCoroutineContext().isActive && connectionManager.isConnected) {
+                cycle++
+                val cycleStartMs = SystemClock.elapsedRealtime()
+                val previous = _telemetryState.value
+
+                // Primary loop (every cycle): RPM and Speed
+                val rpmVal = pollPidIfSupported(ObdProtocol.CMD_RPM, 300)?.let {
+                    ObdProtocol.parseRpm(it)
+                } ?: previous.rpm
+
+                val spdVal = pollPidIfSupported(ObdProtocol.CMD_SPEED, 300)?.let {
+                    ObdProtocol.parseSpeed(it)
+                } ?: previous.speedKmh
+
+                // Coolant & Engine Load every 3 cycles
+                var ectVal = previous.coolantTempC
+                var loadVal = previous.engineLoadPercent
+                if (cycle % 3 == 0) {
+                    pollPidIfSupported(ObdProtocol.CMD_COOLANT, 350)?.let {
+                        ectVal = ObdProtocol.parseCoolant(it) ?: ectVal
+                    }
+                    pollPidIfSupported(ObdProtocol.CMD_ENGINE_LOAD, 350)?.let {
+                        loadVal = ObdProtocol.parseEngineLoad(it) ?: loadVal
+                    }
+                }
+
+                // Throttle & MAP/Boost every 4 cycles
+                var tpsVal = previous.throttlePercent
+                var mapVal = previous.mapKpa
+                var boostVal = previous.turboBoostBar
+                if (cycle % 4 == 0) {
+                    pollPidIfSupported(ObdProtocol.CMD_THROTTLE, 300)?.let {
+                        tpsVal = ObdProtocol.parseThrottle(it) ?: tpsVal
+                    }
+                    pollPidIfSupported(ObdProtocol.CMD_MAP_BOOST, 320)?.let { raw ->
+                        mapVal = ObdProtocol.parseMapKpa(raw) ?: mapVal
+                        boostVal = ObdProtocol.parseBoost(raw) ?: boostVal
+                    }
+                }
+
+                // MAF & Intake Air Temp every 6 cycles
+                var mafVal = previous.mafGs
+                var iatVal = previous.intakeTempC
+                if (cycle % 6 == 0) {
+                    pollPidIfSupported(ObdProtocol.CMD_MAF, 350)?.let {
+                        mafVal = ObdProtocol.parseMaf(it) ?: mafVal
+                    }
+                    pollPidIfSupported(ObdProtocol.CMD_INTAKE_TEMP, 300)?.let {
+                        iatVal = ObdProtocol.parseIat(it) ?: iatVal
+                    }
+                }
+
+                // Voltage & Fuel Level every 20 cycles (slow-changing metrics)
+                var voltVal = previous.voltage
+                var fuelVal = previous.fuelLevelPercent
+                if (cycle == 1 || cycle % 20 == 0) {
+                    val voltRaw = connectionManager.executeCommand(ObdProtocol.CMD_VOLTAGE, 350)
+                    voltVal = ObdProtocol.parseVoltage(voltRaw) ?: voltVal
+
+                    pollPidIfSupported(ObdProtocol.CMD_FUEL_LEVEL, 400)?.let {
+                        fuelVal = ObdProtocol.parseFuelLevel(it) ?: fuelVal
+                    }
+                }
+
+                // Re-enable core PIDs periodically every 120 cycles in case engine ignition state changed
+                if (cycle % 120 == 0) {
+                    unsupportedPids.remove(ObdProtocol.CMD_RPM)
+                    unsupportedPids.remove(ObdProtocol.CMD_SPEED)
+                }
+
+                val nowElapsed = SystemClock.elapsedRealtime()
+                val pollLatency = (nowElapsed - cycleStartMs).coerceAtLeast(1L)
+
+                val hasMaterialChange =
+                    spdVal != previous.speedKmh ||
+                        rpmVal != previous.rpm ||
+                        ectVal != previous.coolantTempC ||
+                        loadVal != previous.engineLoadPercent ||
+                        tpsVal != previous.throttlePercent ||
+                        iatVal != previous.intakeTempC ||
+                        mapVal != previous.mapKpa ||
+                        fuelVal != previous.fuelLevelPercent ||
+                        !floatEquals(mafVal, previous.mafGs, 0.05f) ||
+                        !floatEquals(boostVal, previous.turboBoostBar, 0.01f) ||
+                        !floatEquals(voltVal, previous.voltage, 0.05f) ||
+                        protocol != previous.protocolName
+
+                if (hasMaterialChange || (nowElapsed - lastEmitTimeMs) >= 1500L) {
+                    lastEmitTimeMs = nowElapsed
+                    _telemetryState.value = ParsedObdMetrics(
+                        speedKmh = spdVal,
+                        rpm = rpmVal,
+                        coolantTempC = ectVal,
+                        engineLoadPercent = loadVal,
+                        throttlePercent = tpsVal,
+                        intakeTempC = iatVal,
+                        mafGs = mafVal,
+                        mapKpa = mapVal,
+                        turboBoostBar = boostVal,
+                        fuelLevelPercent = fuelVal,
+                        voltage = voltVal,
+                        protocolName = protocol,
+                        lastUpdatedMs = System.currentTimeMillis(),
+                        supportedPidsCount = initialSupportedPids.size,
+                        pollLatencyMs = pollLatency
+                    )
+                }
+
+                // Adaptive inter-cycle pause so we don't saturate slow ELM327 UART buffers
+                val pauseMs = if (pollLatency < 60L) 60L else 35L
+                delay(pauseMs)
+            }
+        } catch (ce: CancellationException) {
+            throw ce
+        }
+
+        if (!connectionManager.isConnected && !userExplicitlyDisconnected) {
             handleConnectionLost()
         }
     }
 
+    private fun floatEquals(a: Float?, b: Float?, eps: Float): Boolean {
+        if (a == null && b == null) return true
+        if (a == null || b == null) return false
+        return abs(a - b) <= eps
+    }
+
     private fun handleConnectionLost() {
+        if (userExplicitlyDisconnected) return
         _connectionStatus.value = ObdConnectionStatus.ERROR
-        addLog("OBD-II connection lost. Initiating automatic reconnect daemon...")
+        // Clear stale live speed/RPM so disconnected state never masquerades as live driving data
+        _telemetryState.value = _telemetryState.value.copy(
+            speedKmh = null,
+            rpm = null,
+            lastUpdatedMs = System.currentTimeMillis()
+        )
+        addLog("OBD-II connection lost. Scheduling automatic reconnect...")
         scheduleReconnection()
     }
 
     private fun scheduleReconnection() {
+        if (userExplicitlyDisconnected) return
         reconnectJob?.cancel()
         reconnectJob = serviceScope.launch {
             delay(5000)
-            if (_connectionStatus.value != ObdConnectionStatus.CONNECTED) {
-                addLog("Attempting auto-reconnection...")
+            if (!userExplicitlyDisconnected &&
+                _connectionStatus.value != ObdConnectionStatus.CONNECTED &&
+                _connectionStatus.value != ObdConnectionStatus.CONNECTING
+            ) {
+                addLog("Attempting auto-reconnection to saved OBD adapter...")
                 autoConnectIfPaired()
             }
         }
     }
 
     fun disconnect() {
+        userExplicitlyDisconnected = true
+        saveAdapterPreference(getSavedAdapterAddress(), true)
+        autoConnectJob?.cancel()
         reconnectJob?.cancel()
         pollingJob?.cancel()
         connectionManager.disconnect()
         _connectionStatus.value = ObdConnectionStatus.DISCONNECTED
         _connectedDeviceName.value = "Disconnected"
-        addLog("OBD-II adapter disconnected by user.")
+        _telemetryState.value = ParsedObdMetrics()
+        addLog("OBD-II adapter disconnected by user (auto-reconnect paused until next selection).")
     }
 
     override fun onDestroy() {
-        disconnect()
+        autoConnectJob?.cancel()
+        reconnectJob?.cancel()
+        pollingJob?.cancel()
+        connectionManager.disconnect()
         if (isReceiverRegistered) {
-            try { unregisterReceiver(bluetoothReceiver) } catch (_: Exception) {}
+            try {
+                unregisterReceiver(bluetoothReceiver)
+            } catch (_: Exception) {}
             isReceiverRegistered = false
         }
+        serviceScope.cancel()
         instance = null
         super.onDestroy()
     }

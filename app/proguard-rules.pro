@@ -1,21 +1,23 @@
 # Add project specific ProGuard rules here.
-# You can control the set of applied configuration files using the
-# proguardFiles setting in build.gradle.
-#
-# For more details, see
-#   http://developer.android.com/guide/developing/tools/proguard.html
+-keepattributes SourceFile,LineNumberTable
+-keepattributes Signature,InnerClasses,EnclosingMethod
 
-# If your project uses WebView with JS, uncomment the following
-# and specify the fully qualified class name to the JavaScript interface
-# class:
-#-keepclassmembers class fqcn.of.javascript.interface.for.webview {
-#   public *;
-#}
+# Preserve BluetoothDevice reflection fallback for ELM327 RFCOMM channel 1
+-keepclassmembers class android.bluetooth.BluetoothDevice {
+    public android.bluetooth.BluetoothSocket createRfcommSocket(int);
+}
 
-# Uncomment this to preserve the line number information for
-# debugging stack traces.
-#-keepattributes SourceFile,LineNumberTable
+# Preserve Services and BroadcastReceivers
+-keep class com.example.data.obd.ObdTelemetryService { *; }
+-keep class com.example.data.media.VisionMediaNotificationListenerService { *; }
 
-# If you keep the line number information, uncomment this to
-# hide the original source file name.
-#-renamesourcefileattribute SourceFile
+# Preserve OBD and Telemetry data models
+-keep class com.example.model.** { *; }
+-keep class com.example.data.obd.ParsedObdMetrics { *; }
+-keep class com.example.data.weather.LiveWeatherData { *; }
+
+# OkHttp3 & Coroutines safe rules
+-dontwarn okhttp3.**
+-dontwarn okio.**
+-dontwarn javax.annotation.**
+-dontwarn org.conscrypt.**

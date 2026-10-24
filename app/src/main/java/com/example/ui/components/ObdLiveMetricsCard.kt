@@ -1,6 +1,5 @@
 package com.example.ui.components
 
-import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.core.RepeatMode
 import androidx.compose.animation.core.animateFloat
 import androidx.compose.animation.core.infiniteRepeatable
@@ -26,8 +25,8 @@ import androidx.compose.material.icons.filled.Compress
 import androidx.compose.material.icons.filled.DeviceThermostat
 import androidx.compose.material.icons.filled.Speed
 import androidx.compose.material.icons.filled.Tune
-import androidx.compose.material.icons.filled.Waves
 import androidx.compose.material.icons.filled.Warning
+import androidx.compose.material.icons.filled.Waves
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -53,6 +52,7 @@ import com.example.ui.theme.GlassCardFill
 import com.example.ui.theme.TextMuted
 import com.example.ui.theme.TextPrimaryWhite
 import com.example.ui.theme.TextSecondaryGrey
+import java.util.Locale
 
 @Composable
 fun ObdLiveMetricsCard(
@@ -65,20 +65,20 @@ fun ObdLiveMetricsCard(
     val isConnected = telemetry.isObdConnected
     val isOverheating = telemetry.isOverheating || (telemetry.coolantTemp >= telemetry.coolantThreshold)
 
-    val infiniteTransition = rememberInfiniteTransition(label = "overheatPulse")
-    val pulseAlpha by infiniteTransition.animateFloat(
-        initialValue = 0.4f,
-        targetValue = 1.0f,
-        animationSpec = infiniteRepeatable(
-            animation = tween(600),
-            repeatMode = RepeatMode.Reverse
-        ),
-        label = "pulseAlpha"
-    )
-
-    val cardBorderColor = when {
-        isOverheating -> BmwCrimson.copy(alpha = pulseAlpha)
-        else -> GlassCardBorder
+    val cardBorderColor = if (isOverheating) {
+        val infiniteTransition = rememberInfiniteTransition(label = "overheatPulse")
+        val pulseAlpha by infiniteTransition.animateFloat(
+            initialValue = 0.4f,
+            targetValue = 1.0f,
+            animationSpec = infiniteRepeatable(
+                animation = tween(600),
+                repeatMode = RepeatMode.Reverse
+            ),
+            label = "pulseAlpha"
+        )
+        BmwCrimson.copy(alpha = pulseAlpha)
+    } else {
+        GlassCardBorder
     }
 
     Column(
@@ -210,6 +210,11 @@ fun ObdLiveMetricsCard(
             } else {
                 "${telemetry.intakeAirTemp}°C"
             }
+            val iatProgress = if (isConnected) {
+                ((telemetry.intakeAirTemp + 20f) / 100f).coerceIn(0.05f, 1f)
+            } else {
+                0f
+            }
 
             MetricBox(
                 modifier = Modifier.weight(1f),
@@ -217,9 +222,9 @@ fun ObdLiveMetricsCard(
                 iconTint = BmwCyan,
                 title = "IAT (INTAKE)",
                 value = if (isConnected) iatDisplay else "--",
-                status = if (isConnected) "NORMAL" else "--",
-                statusColor = BmwCyan,
-                barProgress = if (isConnected) 0.38f else 0f,
+                status = if (isConnected) (if (telemetry.intakeAirTemp > 55) "HEAT SOAK" else "NORMAL") else "--",
+                statusColor = if (isConnected && telemetry.intakeAirTemp > 55) BmwAmber else BmwCyan,
+                barProgress = iatProgress,
                 barColor = BmwCyan
             )
 
@@ -236,7 +241,7 @@ fun ObdLiveMetricsCard(
             )
         }
 
-        // Row 3: Turbo Boost & Mass Air Flow (MAF)
+        // Row 3: Signed MAP Boost / Vacuum (Est.) & Mass Air Flow (MAF)
         Box(
             modifier = Modifier
                 .fillMaxWidth()
@@ -250,20 +255,34 @@ fun ObdLiveMetricsCard(
                 horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                // Boost
+                // Signed Boost / Vacuum derived from PID 010B MAP
+                val boostVal = telemetry.turboBoostBar
+                val boostLabel = when {
+                    !isConnected -> "MAP / BOOST (EST)"
+                    boostVal < -0.02f -> "VACUUM (MAP EST)"
+                    else -> "BOOST (MAP EST)"
+                }
+                val boostFormatted = if (isConnected) {
+                    val barText = String.format(Locale.US, "%+.2f bar", boostVal)
+                    val kpaSuffix = telemetry.mapKpa?.let { " ($it kPa)" } ?: ""
+                    "$barText$kpaSuffix"
+                } else {
+                    "-- bar"
+                }
+
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Icon(
                         imageVector = Icons.Default.Compress,
                         contentDescription = null,
-                        tint = BmwCyan,
+                        tint = if (isConnected && boostVal > 0.05f) BmwOptimalGreen else BmwCyan,
                         modifier = Modifier.size(22.dp)
                     )
                     Spacer(modifier = Modifier.width(8.dp))
                     Column {
-                        Text("BOOST", fontSize = 12.sp, fontWeight = FontWeight.Bold, color = TextSecondaryGrey)
+                        Text(boostLabel, fontSize = 11.sp, fontWeight = FontWeight.Bold, color = TextSecondaryGrey)
                         Text(
-                            text = if (isConnected) "${telemetry.turboBoostBar} bar" else "-- bar",
-                            fontSize = 18.sp,
+                            text = boostFormatted,
+                            fontSize = 16.sp,
                             fontWeight = FontWeight.Black,
                             color = if (isConnected) TextPrimaryWhite else TextMuted
                         )
@@ -287,10 +306,10 @@ fun ObdLiveMetricsCard(
                     )
                     Spacer(modifier = Modifier.width(8.dp))
                     Column {
-                        Text("MAF FLOW", fontSize = 12.sp, fontWeight = FontWeight.Bold, color = TextSecondaryGrey)
+                        Text("MAF FLOW", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = TextSecondaryGrey)
                         Text(
-                            text = if (isConnected) "${telemetry.mafFlowGs.toInt()} g/s" else "-- g/s",
-                            fontSize = 18.sp,
+                            text = if (isConnected) String.format(Locale.US, "%.1f g/s", telemetry.mafFlowGs) else "-- g/s",
+                            fontSize = 16.sp,
                             fontWeight = FontWeight.Black,
                             color = if (isConnected) TextPrimaryWhite else TextMuted
                         )

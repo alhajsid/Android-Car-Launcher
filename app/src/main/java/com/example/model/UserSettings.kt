@@ -48,5 +48,7 @@ data class UserSettings(
         6 to 15.0f
     ),
     val favoritePackages: Set<String> = emptySet(),
-    val hiddenPackages: Set<String> = emptySet()
+    val hiddenPackages: Set<String> = emptySet(),
+    val customCarPlayComponent: String = "",
+    val customAndroidAutoComponent: String = ""
 )

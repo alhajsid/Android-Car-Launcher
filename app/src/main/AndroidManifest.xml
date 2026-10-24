@@ -24,8 +24,57 @@
     <queries>
         <intent>
             <action android:name="android.intent.action.MAIN" />
+        </intent>
+        <intent>
+            <action android:name="android.intent.action.MAIN" />
             <category android:name="android.intent.category.LAUNCHER" />
         </intent>
+        <intent>
+            <action android:name="android.intent.action.MAIN" />
+            <category android:name="android.intent.category.DEFAULT" />
+        </intent>
+        <intent>
+            <action android:name="android.intent.action.MAIN" />
+            <category android:name="android.intent.category.CAR_MODE" />
+        </intent>
+        <intent>
+            <action android:name="android.intent.action.MAIN" />
+            <category android:name="android.intent.category.CAR_DOCK" />
+        </intent>
+        <intent>
+            <action android:name="android.intent.action.MAIN" />
+            <category android:name="android.intent.category.INFO" />
+        </intent>
+        <intent>
+            <action android:name="android.intent.action.APPLICATION_PREFERENCES" />
+        </intent>
+        <intent>
+            <action android:name="android.intent.action.VIEW" />
+        </intent>
+        <package android:name="com.google.android.projection.gearhead" />
+        <package android:name="com.google.android.apps.auto" />
+        <package android:name="com.zjinnova.zlink5" />
+        <package android:name="com.zjinnova.zlink" />
+        <package android:name="com.zjinnova.zlink6" />
+        <package android:name="com.zjinnova.zlink.auto" />
+        <package android:name="cn.manstep.phonemirrorBox" />
+        <package android:name="cn.manstep.phonemirror" />
+        <package android:name="com.carlinkit.autokit" />
+        <package android:name="com.tlink.auto" />
+        <package android:name="com.syu.tlink" />
+        <package android:name="com.syu.carlink" />
+        <package android:name="com.syu.ms" />
+        <package android:name="com.suding.speedplay" />
+        <package android:name="com.carlink" />
+        <package android:name="com.carlink.ap" />
+        <package android:name="com.carlink.carlink" />
+        <package android:name="com.jancar.carlink" />
+        <package android:name="gb.xxy.hr" />
+        <package android:name="gb.xxy.hr.trial" />
+        <package android:name="net.easyconn" />
+        <package android:name="com.carletter.carletter" />
+        <package android:name="com.autochips.carplay" />
+        <package android:name="com.autochips.androidauto" />
     </queries>
 
     <application

@@ -248,13 +248,13 @@ class MainActivity : ComponentActivity(), SensorEventListener {
                                                 }
                                             }
                                             "carplay" -> {
-                                                val launched = appsRepository.launchCarPlay()
+                                                val launched = appsRepository.launchCarPlay(settings.customCarPlayComponent)
                                                 if (!launched) {
                                                     activeProjectionDialog = ProjectionType.CARPLAY
                                                 }
                                             }
                                             "android_auto" -> {
-                                                val launched = appsRepository.launchAndroidAuto()
+                                                val launched = appsRepository.launchAndroidAuto(settings.customAndroidAutoComponent)
                                                 if (!launched) {
                                                     activeProjectionDialog = ProjectionType.ANDROID_AUTO
                                                 }
@@ -281,14 +281,28 @@ class MainActivity : ComponentActivity(), SensorEventListener {
                                     apps = if (installedApps.isNotEmpty()) installedApps else appsRepository.getInstalledApps(),
                                     isDefaultLauncher = isDefaultLauncher,
                                     onLaunchApp = { pkg ->
-                                        if (pkg == "com.zjinnova.zlink5" || pkg == "carplay" || pkg.contains("zlink")) {
-                                            val launched = appsRepository.launchCarPlay()
-                                            if (!launched) activeProjectionDialog = ProjectionType.CARPLAY
-                                        } else if (pkg == "com.google.android.projection.gearhead" || pkg == "android_auto") {
-                                            val launched = appsRepository.launchAndroidAuto()
-                                            if (!launched) activeProjectionDialog = ProjectionType.ANDROID_AUTO
-                                        } else {
-                                            appsRepository.launchApp(pkg)
+                                        when {
+                                            pkg == "carplay" -> {
+                                                val launched = appsRepository.launchCarPlay(settings.customCarPlayComponent)
+                                                if (!launched) activeProjectionDialog = ProjectionType.CARPLAY
+                                            }
+                                            pkg == "android_auto" -> {
+                                                val launched = appsRepository.launchAndroidAuto(settings.customAndroidAutoComponent)
+                                                if (!launched) activeProjectionDialog = ProjectionType.ANDROID_AUTO
+                                            }
+                                            else -> {
+                                                // Launch the exact installed activity ComponentName directly
+                                                val directLaunched = appsRepository.launchApp(pkg)
+                                                if (!directLaunched) {
+                                                    if (pkg.contains("zlink", ignoreCase = true) || pkg.contains("carplay", ignoreCase = true)) {
+                                                        val cpLaunched = appsRepository.launchCarPlay(settings.customCarPlayComponent)
+                                                        if (!cpLaunched) activeProjectionDialog = ProjectionType.CARPLAY
+                                                    } else if (pkg.contains("gearhead", ignoreCase = true) || pkg.contains("auto", ignoreCase = true)) {
+                                                        val aaLaunched = appsRepository.launchAndroidAuto(settings.customAndroidAutoComponent)
+                                                        if (!aaLaunched) activeProjectionDialog = ProjectionType.ANDROID_AUTO
+                                                    }
+                                                }
+                                            }
                                         }
                                     },
                                     onToggleFavorite = { pkg ->
@@ -396,8 +410,33 @@ class MainActivity : ComponentActivity(), SensorEventListener {
 
                     // Dialog helper for Apple CarPlay and Android Auto on car head units
                     activeProjectionDialog?.let { type ->
+                        val allAppsList = if (installedApps.isNotEmpty()) installedApps else appsRepository.getInstalledApps()
+                        val currentBound = if (type == ProjectionType.CARPLAY) {
+                            settings.customCarPlayComponent
+                        } else {
+                            settings.customAndroidAutoComponent
+                        }
+
                         PhoneProjectionDialog(
                             type = type,
+                            installedApps = allAppsList,
+                            currentBoundComponent = currentBound,
+                            onSelectAndLaunchApp = { selectedApp ->
+                                val componentStr = if (!selectedApp.activityName.isNullOrBlank()) {
+                                    "${selectedApp.packageName}/${selectedApp.activityName}"
+                                } else {
+                                    selectedApp.packageName
+                                }
+                                telemetryRepository.updateSettings { current ->
+                                    if (type == ProjectionType.CARPLAY) {
+                                        current.copy(customCarPlayComponent = componentStr)
+                                    } else {
+                                        current.copy(customAndroidAutoComponent = componentStr)
+                                    }
+                                }
+                                activeProjectionDialog = null
+                                appsRepository.launchShortcut(selectedApp)
+                            },
                             onDismiss = { activeProjectionDialog = null },
                             onOpenBluetooth = {
                                 try {
@@ -408,20 +447,33 @@ class MainActivity : ComponentActivity(), SensorEventListener {
                                 } catch (_: Exception) {}
                                 activeProjectionDialog = null
                             },
-                            onOpenPlayStore = {
-                                val pkg = if (type == ProjectionType.CARPLAY) "cn.manstep.phonemirrorBox" else "com.google.android.projection.gearhead"
-                                try {
-                                    val playIntent = Intent(Intent.ACTION_VIEW, Uri.parse("market://details?id=$pkg")).apply {
-                                        flags = Intent.FLAG_ACTIVITY_NEW_TASK
-                                    }
-                                    startActivity(playIntent)
-                                } catch (_: Exception) {
+                            onOpenConnectionSettings = {
+                                val launchedAuto = if (type == ProjectionType.ANDROID_AUTO) {
+                                    appsRepository.launchAndroidAuto()
+                                } else {
+                                    appsRepository.launchCarPlay()
+                                }
+                                if (!launchedAuto) {
                                     try {
-                                        val webIntent = Intent(Intent.ACTION_VIEW, Uri.parse("https://play.google.com/store/apps/details?id=$pkg")).apply {
+                                        val castIntent = Intent(android.provider.Settings.ACTION_CAST_SETTINGS).apply {
                                             flags = Intent.FLAG_ACTIVITY_NEW_TASK
                                         }
-                                        startActivity(webIntent)
-                                    } catch (_: Exception) {}
+                                        startActivity(castIntent)
+                                    } catch (_: Exception) {
+                                        try {
+                                            val wirelessIntent = Intent(android.provider.Settings.ACTION_WIRELESS_SETTINGS).apply {
+                                                flags = Intent.FLAG_ACTIVITY_NEW_TASK
+                                            }
+                                            startActivity(wirelessIntent)
+                                        } catch (_: Exception) {
+                                            try {
+                                                val settingsIntent = Intent(android.provider.Settings.ACTION_SETTINGS).apply {
+                                                    flags = Intent.FLAG_ACTIVITY_NEW_TASK
+                                                }
+                                                startActivity(settingsIntent)
+                                            } catch (_: Exception) {}
+                                        }
+                                    }
                                 }
                                 activeProjectionDialog = null
                             }
